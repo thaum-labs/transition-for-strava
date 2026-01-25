@@ -4,10 +4,24 @@ import {
   consumeOAuthState,
   encryptSessionToken,
   SESSION_COOKIE_NAME,
-  sessionCookieOptions,
 } from "@/src/lib/session";
+import { isProd } from "@/src/lib/env";
 
 export const runtime = "nodejs";
+
+function buildSetCookieHeader(name: string, value: string): string {
+  const parts = [
+    `${name}=${value}`,
+    "Path=/",
+    "HttpOnly",
+    `SameSite=Lax`,
+    `Max-Age=2592000`, // 30 days
+  ];
+  if (isProd()) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
 
 function publicOrigin(req: Request): string {
   // Behind proxies (like DigitalOcean App Platform), req.url can be the internal container hostname.
@@ -56,11 +70,11 @@ export async function GET(req: Request) {
     },
   };
 
-  // Encrypt and set cookie directly on the redirect response
+  // Encrypt and set cookie directly on the redirect response using manual Set-Cookie header
   const sessionToken = await encryptSessionToken(sessionData);
   const response = NextResponse.redirect(new URL("/activities", origin));
   response.headers.set("cache-control", "no-store");
-  response.cookies.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions());
+  response.headers.set("set-cookie", buildSetCookieHeader(SESSION_COOKIE_NAME, sessionToken));
 
   return response;
 }
