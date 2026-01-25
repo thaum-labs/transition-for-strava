@@ -135,6 +135,7 @@ export function ExportSheet({
   const recommendedFormat: Format | null = useMemo(() => {
     if (!availability) return defaultFormat;
     if (defaultFormat && availability[defaultFormat].available) return defaultFormat;
+    // GPX is more universally compatible, so prefer it
     if (availability.gpx.available) return "gpx";
     if (availability.fit.available) return "fit";
     return null;
@@ -260,9 +261,9 @@ export function ExportSheet({
                 : "cursor-not-allowed border border-zinc-800 bg-zinc-900/40 text-zinc-500",
             ].join(" ")}
           >
-            Export FIT
+            Export FIT (experimental)
             <div className="mt-1 text-xs font-normal text-zinc-600">
-              FIT is generated from streams (not the original upload).
+              Synthesized from GPS data. May not work with all apps — try GPX if import fails.
             </div>
             {!availability?.fit.available && availability?.fit.reason ? (
               <div className="mt-1 text-xs font-normal">{availability.fit.reason}</div>
