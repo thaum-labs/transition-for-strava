@@ -20,6 +20,9 @@ type StravaSummaryActivity = {
   start_date: string;
   distance: number;
   moving_time: number;
+  total_elevation_gain?: number;
+  average_speed?: number;
+  max_speed?: number;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -84,6 +87,9 @@ export async function GET(req: Request) {
       start_date: a.start_date,
       distance: a.distance,
       moving_time: a.moving_time,
+      total_elevation_gain: a.total_elevation_gain,
+      average_speed: a.average_speed,
+      max_speed: a.max_speed,
     }));
 
     return NextResponse.json(minimal, {

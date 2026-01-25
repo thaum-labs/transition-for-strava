@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ActivitySummary } from "@/src/components/ActivityCard";
+import { mapStravaSportToFit } from "@/src/lib/sportMapping";
 
 type Format = "gpx" | "fit";
 
@@ -110,7 +111,19 @@ export function ExportSheet({
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<"shared" | "downloaded" | null>(null);
-  const [fitSportType, setFitSportType] = useState<FitSportType>(2); // Default to Cycling
+
+  // Auto-detect sport type from activity
+  const detectedSportType = useMemo(
+    () => (activity ? mapStravaSportToFit(activity.sport_type) : 2),
+    [activity]
+  ) as FitSportType;
+
+  const [fitSportType, setFitSportType] = useState<FitSportType>(detectedSportType);
+
+  // Update sport type when activity changes
+  useEffect(() => {
+    setFitSportType(detectedSportType);
+  }, [detectedSportType]);
 
   const id = activity?.id ?? null;
 

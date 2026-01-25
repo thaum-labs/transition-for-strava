@@ -21,6 +21,30 @@ function degreesToSemicircles(degrees: number): number {
   return Math.round(degrees * SEMICIRCLES_PER_DEGREE);
 }
 
+// Haversine formula for accurate distance calculation between two GPS points
+function haversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth's radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in meters
+}
+
 // Map our sport type IDs to FIT profile sport names
 function getSportName(sportType: number): string {
   switch (sportType) {
@@ -106,13 +130,10 @@ export function buildFit(params: {
     const [lat, lon] = latlng[i];
     const timestamp = hasTime ? startTimestamp + time[i] : startTimestamp + i;
     
-    // Calculate distance from previous point (simple approximation)
+    // Calculate distance from previous point using Haversine formula
     if (i > 0) {
       const [prevLat, prevLon] = latlng[i - 1];
-      const dLat = lat - prevLat;
-      const dLon = lon - prevLon;
-      // Rough distance in meters (at equator scale, good enough for FIT)
-      const dist = Math.sqrt(dLat * dLat + dLon * dLon) * 111000;
+      const dist = haversineDistance(prevLat, prevLon, lat, lon);
       totalDistance += dist;
     }
 

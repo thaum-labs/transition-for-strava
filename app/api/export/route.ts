@@ -25,6 +25,10 @@ type StravaStreamSet = {
   latlng?: StravaStream;
   time?: StravaStream;
   altitude?: StravaStream;
+  heartrate?: StravaStream;
+  cadence?: StravaStream;
+  watts?: StravaStream;
+  velocity_smooth?: StravaStream;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -117,7 +121,7 @@ export async function GET(req: Request) {
       fresh,
     );
     const streamsResult = await stravaGetJsonWithRefresh<StravaStreamSet>(
-      `/activities/${parsed.data.activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
+      `/activities/${parsed.data.activityId}/streams?keys=latlng,time,altitude,heartrate,cadence,watts,velocity_smooth&key_by_type=true`,
       activityResult.session,
     );
     if (refreshed || activityResult.refreshed || streamsResult.refreshed) {
@@ -130,6 +134,10 @@ export async function GET(req: Request) {
     const latlng = toLatLngPairs(streamArray(streams.latlng));
     const time = toNumberArray(streamArray(streams.time));
     const altitude = toNumberArray(streamArray(streams.altitude));
+    const heartRate = toNumberArray(streamArray(streams.heartrate));
+    const cadence = toNumberArray(streamArray(streams.cadence));
+    const power = toNumberArray(streamArray(streams.watts));
+    const velocity = toNumberArray(streamArray(streams.velocity_smooth));
 
     if (!latlng || latlng.length < 2) {
       return new NextResponse("No GPS track available for this activity.", {
@@ -149,7 +157,11 @@ export async function GET(req: Request) {
     const gpx = buildGpx({
       activityName: activity.name,
       startDateUtc,
-      streams: { latlng, time: time ?? undefined, altitude: altitude ?? undefined },
+      streams: {
+        latlng,
+        time: time ?? undefined,
+        altitude: altitude ?? undefined,
+      },
     });
 
     // Avoid bigint precision issues: use the requested id (string) for the filename.
@@ -171,7 +183,14 @@ export async function GET(req: Request) {
     const fitBytes = buildFit({
       activityName: activity.name,
       startDateUtc,
-      streams: { latlng, time: time ?? undefined, altitude: altitude ?? undefined },
+      streams: {
+        latlng,
+        time: time ?? undefined,
+        altitude: altitude ?? undefined,
+        heartRate: heartRate ?? undefined,
+        cadence: cadence ?? undefined,
+        power: power ?? undefined,
+      },
       options: { sportType },
     });
     const fitBody = Buffer.from(fitBytes);
