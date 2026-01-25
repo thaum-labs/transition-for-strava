@@ -10,11 +10,19 @@ function publicOrigin(req: Request): string {
   return new URL(req.url).origin;
 }
 
-export async function GET(req: Request) {
+// GET requests should NOT perform logout (prefetching would log users out)
+export async function GET() {
+  return new NextResponse("Use POST to log out.", { status: 405 });
+}
+
+// POST request to actually perform logout
+export async function POST(req: Request) {
   await clearSession();
   await clearCsrfToken();
-  return NextResponse.redirect(new URL("/", publicOrigin(req)), {
-    headers: { "cache-control": "no-store" },
-  });
+  // Return JSON instead of redirect so client can handle navigation
+  return NextResponse.json(
+    { success: true, redirectTo: "/" },
+    { headers: { "cache-control": "no-store" } }
+  );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ActivityCard, type ActivitySummary } from "@/src/components/ActivityCard";
 import { ExportSheet } from "@/src/components/ExportSheet";
 
@@ -12,6 +12,7 @@ function daysAgoToUnixSeconds(days: number) {
 }
 
 export default function ActivitiesPage() {
+  const router = useRouter();
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivitySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +24,14 @@ export default function ActivitiesPage() {
   const [range, setRange] = useState<DateRange>("30d");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    router.push("/");
+  }
 
   useEffect(() => {
     void (async () => {
@@ -101,12 +110,13 @@ export default function ActivitiesPage() {
       <header className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Activities</h1>
-          <Link
-            href="/api/auth/logout"
+          <button
+            type="button"
+            onClick={handleLogout}
             className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
           >
             Log out
-          </Link>
+          </button>
         </div>
         <p className="text-xs text-zinc-400">
           GPX and FIT are generated from Strava streams. FIT is synthesized (not
