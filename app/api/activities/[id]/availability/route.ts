@@ -100,7 +100,7 @@ export async function GET(
           ? { available: true }
           : { available: false, reason: "No GPS track available for this activity." },
         notes: [
-          "FIT files are generated using the Garmin FIT SDK from Strava GPS streams. Sport type is automatically set to cycling.",
+          "FIT files are generated using the Garmin FIT SDK from Strava GPS streams.",
         ],
       },
       { headers: { "cache-control": "no-store" } },
