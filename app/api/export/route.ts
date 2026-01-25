@@ -164,7 +164,8 @@ export async function GET(req: Request) {
 
     // FIT is synthesized from the generated GPX/streams. Never silently fallback.
     const fitBytes = await gpxToFitBytes(gpx);
-    return new NextResponse(fitBytes, {
+    const fitBody = Buffer.from(fitBytes);
+    return new NextResponse(fitBody, {
       status: 200,
       headers: {
         "content-type": "application/vnd.ant.fit",
