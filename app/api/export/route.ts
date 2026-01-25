@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildGpx } from "@/src/lib/gpx";
-import { gpxToFitBytes } from "@/src/lib/fit";
+import { buildFit } from "@/src/lib/fit";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { getSession, readCsrfToken, setSession } from "@/src/lib/session";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
@@ -166,9 +166,14 @@ export async function GET(req: Request) {
       });
     }
 
-    // FIT is synthesized from the generated GPX/streams. Never silently fallback.
-    const sportType = parsed.data.sportType ?? 0; // 0 = generic
-    const fitBytes = await gpxToFitBytes(gpx, { sportType });
+    // FIT is generated using Garmin FIT SDK with proper session/sport messages
+    const sportType = parsed.data.sportType ?? 2; // 2 = cycling (default)
+    const fitBytes = buildFit({
+      activityName: activity.name,
+      startDateUtc,
+      streams: { latlng, time: time ?? undefined, altitude: altitude ?? undefined },
+      options: { sportType },
+    });
     const fitBody = Buffer.from(fitBytes);
     return new NextResponse(fitBody, {
       status: 200,
