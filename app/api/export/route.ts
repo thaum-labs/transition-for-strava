@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 const QuerySchema = z.object({
   activityId: z.string().regex(/^\d+$/, "Invalid activity id."),
   format: z.enum(["gpx", "fit"]),
+  sportType: z.coerce.number().int().min(0).max(255).optional(),
 });
 
 type StravaActivityDetail = {
@@ -166,12 +167,12 @@ export async function GET(req: Request) {
     }
 
     // FIT is generated using Garmin FIT SDK with proper session/sport messages
-    // Default to cycling (sport type 2)
+    const sportType = parsed.data.sportType ?? 2; // Default to cycling (sport type 2)
     const fitBytes = buildFit({
       activityName: activity.name,
       startDateUtc,
       streams: { latlng, time: time ?? undefined, altitude: altitude ?? undefined },
-      options: { sportType: 2 }, // Cycling
+      options: { sportType },
     });
     const fitBody = Buffer.from(fitBytes);
     return new NextResponse(fitBody, {
