@@ -56,6 +56,7 @@ export function ElevationProfile({ activityId, className = "" }: ElevationProfil
   });
 
   const pathData = `M 0,100 L ${points.join(" L ")} L 100,100 Z`;
+  const gradientId = `elevationGradient-${activityId}`;
 
   return (
     <svg
@@ -66,13 +67,17 @@ export function ElevationProfile({ activityId, className = "" }: ElevationProfil
     >
       <path
         d={pathData}
-        fill="url(#elevationGradient)"
-        opacity="0.12"
+        fill={`url(#${gradientId})`}
+        opacity="0.3"
+        stroke="#f97316"
+        strokeWidth="0.5"
+        strokeOpacity="0.4"
       />
       <defs>
-        <linearGradient id="elevationGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#f97316" stopOpacity="0.6" />
-          <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#f97316" stopOpacity="0.8" />
+          <stop offset="50%" stopColor="#f97316" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#f97316" stopOpacity="0.1" />
         </linearGradient>
       </defs>
     </svg>
