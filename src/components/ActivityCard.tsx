@@ -8,6 +8,7 @@ export type ActivitySummary = {
   total_elevation_gain?: number;
   average_speed?: number;
   max_speed?: number;
+  elevation_profile?: number[]; // Simplified altitude data for background chart
 };
 
 function formatDistanceMeters(meters: number) {
@@ -35,6 +36,8 @@ function formatElevationMeters(meters: number | undefined) {
   return `${Math.round(meters)} m`;
 }
 
+import { ElevationProfile } from "./ElevationProfile";
+
 export function ActivityCard({
   activity,
   onExport,
@@ -56,8 +59,9 @@ export function ActivityCard({
   const elevation = formatElevationMeters(activity.total_elevation_gain);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+      <ElevationProfile activityId={activity.id} />
+      <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-semibold">{activity.name}</div>
           <div className="mt-1 text-xs text-zinc-400">
