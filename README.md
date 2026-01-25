@@ -1,8 +1,8 @@
-# Transition for Strava
-
 <div align="center">
   <img src="public/logo.png" alt="Transition for Strava logo" width="120" />
 </div>
+
+# Transition for Strava
 
 Transition for Strava is a mobile-first web app that helps you export your Strava activities as files you can import into other apps.
 
