@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 const QuerySchema = z.object({
   activityId: z.string().regex(/^\d+$/, "Invalid activity id."),
   format: z.enum(["gpx", "fit"]),
+  sportType: z.coerce.number().int().min(0).max(255).optional(),
 });
 
 type StravaActivityDetail = {
@@ -166,7 +167,8 @@ export async function GET(req: Request) {
     }
 
     // FIT is synthesized from the generated GPX/streams. Never silently fallback.
-    const fitBytes = await gpxToFitBytes(gpx);
+    const sportType = parsed.data.sportType ?? 0; // 0 = generic
+    const fitBytes = await gpxToFitBytes(gpx, { sportType });
     const fitBody = Buffer.from(fitBytes);
     return new NextResponse(fitBody, {
       status: 200,

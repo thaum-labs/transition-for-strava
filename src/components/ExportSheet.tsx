@@ -11,6 +11,21 @@ type Availability = {
   notes?: string[];
 };
 
+// FIT sport types (subset of common ones)
+const FIT_SPORT_TYPES = [
+  { id: 2, label: "Cycling" },
+  { id: 1, label: "Running" },
+  { id: 11, label: "Walking" },
+  { id: 17, label: "Hiking" },
+  { id: 5, label: "Swimming" },
+  { id: 15, label: "Rowing" },
+  { id: 21, label: "E-Biking" },
+  { id: 10, label: "Training" },
+  { id: 0, label: "Other" },
+] as const;
+
+type FitSportType = (typeof FIT_SPORT_TYPES)[number]["id"];
+
 function getMimeType(format: Format): string {
   return format === "gpx" ? "application/gpx+xml" : "application/vnd.ant.fit";
 }
@@ -87,6 +102,7 @@ export function ExportSheet({
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<"shared" | "downloaded" | null>(null);
+  const [fitSportType, setFitSportType] = useState<FitSportType>(2); // Default to Cycling
 
   const id = activity?.id ?? null;
 
@@ -154,6 +170,9 @@ export function ExportSheet({
       const url = new URL("/api/export", window.location.origin);
       url.searchParams.set("activityId", String(activity.id));
       url.searchParams.set("format", format);
+      if (format === "fit") {
+        url.searchParams.set("sportType", String(fitSportType));
+      }
 
       const res = await fetch(url.toString(), {
         method: "GET",
@@ -248,27 +267,42 @@ export function ExportSheet({
             ) : null}
           </button>
 
-          <button
-            type="button"
-            disabled={!availability?.fit.available}
-            onClick={() => doExport("fit")}
-            className={[
-              "w-full rounded-xl px-4 py-3 text-left text-sm font-semibold",
-              availability?.fit.available
-                ? recommendedFormat === "fit"
-                  ? "bg-orange-500 text-black"
-                  : "bg-zinc-100 text-black"
-                : "cursor-not-allowed border border-zinc-800 bg-zinc-900/40 text-zinc-500",
-            ].join(" ")}
-          >
-            Export FIT (experimental)
-            <div className="mt-1 text-xs font-normal text-zinc-600">
+          <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-zinc-200">Export FIT (experimental)</span>
+              <select
+                className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
+                value={fitSportType}
+                onChange={(e) => setFitSportType(Number(e.target.value) as FitSportType)}
+                disabled={!availability?.fit.available}
+              >
+                {FIT_SPORT_TYPES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-xs text-zinc-500">
               Synthesized from GPS data. May not work with all apps — try GPX if import fails.
             </div>
+            <button
+              type="button"
+              disabled={!availability?.fit.available}
+              onClick={() => doExport("fit")}
+              className={[
+                "w-full rounded-lg px-3 py-2 text-sm font-semibold",
+                availability?.fit.available
+                  ? "bg-zinc-100 text-black"
+                  : "cursor-not-allowed bg-zinc-800 text-zinc-500",
+              ].join(" ")}
+            >
+              Export FIT
+            </button>
             {!availability?.fit.available && availability?.fit.reason ? (
-              <div className="mt-1 text-xs font-normal">{availability.fit.reason}</div>
+              <div className="text-xs text-zinc-500">{availability.fit.reason}</div>
             ) : null}
-          </button>
+          </div>
 
           {actionError ? (
             <div className="rounded-xl border border-red-900/60 bg-red-950/30 p-3 text-sm text-red-200">
