@@ -313,27 +313,25 @@ export function ExportSheet({
               <div className="text-xs text-zinc-500">{availability.fit.reason}</div>
             ) : null}
             {availability?.notes?.length ? (
-              <div className="flex justify-center">
-                <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-4 py-2">
-                  <svg
-                    className="h-4 w-4 shrink-0 text-blue-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <p className="text-xs text-blue-200">
-                    {availability.notes.map((n, i) => (
-                      <span key={i}>{n}</span>
-                    ))}
-                  </p>
-                </div>
+              <div className="flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-4 py-2 w-full">
+                <svg
+                  className="h-4 w-4 shrink-0 text-blue-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-xs text-blue-200">
+                  {availability.notes.map((n, i) => (
+                    <span key={i}>{n}</span>
+                  ))}
+                </p>
               </div>
             ) : null}
           </div>
