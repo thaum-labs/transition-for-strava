@@ -85,6 +85,20 @@ export async function setSession(session: SessionData) {
   });
 }
 
+/** Build cookie options for setting session on a Response object (e.g. redirect). */
+export function sessionCookieOptions() {
+  return {
+    ...cookieBaseOptions(),
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 30,
+  };
+}
+
+/** Encrypt session for use with response.cookies.set(). */
+export async function encryptSessionToken(session: SessionData): Promise<string> {
+  return await encryptSession(session);
+}
+
 export async function clearSession() {
   const store = await cookieStore();
   store.set(SESSION_COOKIE_NAME, "", {

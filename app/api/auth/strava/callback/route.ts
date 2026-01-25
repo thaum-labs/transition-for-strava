@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { exchangeAuthorizationCode } from "@/src/lib/strava";
-import { consumeOAuthState, setSession } from "@/src/lib/session";
+import {
+  consumeOAuthState,
+  encryptSessionToken,
+  SESSION_COOKIE_NAME,
+  sessionCookieOptions,
+} from "@/src/lib/session";
 
 export const runtime = "nodejs";
 
@@ -41,17 +46,22 @@ export async function GET(req: Request) {
 
   const token = await exchangeAuthorizationCode(code);
 
-  await setSession({
+  // Build session data
+  const sessionData = {
     strava: {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresAt: token.expires_at,
       scope,
     },
-  });
+  };
 
-  return NextResponse.redirect(new URL("/activities", origin), {
-    headers: { "cache-control": "no-store" },
-  });
+  // Encrypt and set cookie directly on the redirect response
+  const sessionToken = await encryptSessionToken(sessionData);
+  const response = NextResponse.redirect(new URL("/activities", origin));
+  response.headers.set("cache-control", "no-store");
+  response.cookies.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions());
+
+  return response;
 }
 
