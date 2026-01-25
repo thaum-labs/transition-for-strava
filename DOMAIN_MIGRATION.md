@@ -20,16 +20,29 @@ The app code is already configured to work with any domain. The OAuth callback r
 
 ### 2. Update Nameservers in Namecheap
 
+**Important:** You're currently viewing the "Advanced DNS" tab. The existing records you see (CNAME for `www` and URL Redirect for `@`) will become inactive once you change nameservers to DigitalOcean. You don't need to delete them - they'll simply be ignored.
+
+**Step-by-step instructions:**
+
 1. Log in to your Namecheap account
-2. Go to **Domain List** → Click **Manage** next to `transitionforstrava.com`
-3. Navigate to the **Nameservers** section
-4. Select **Custom DNS** (instead of "Namecheap BasicDNS")
-5. Enter the DigitalOcean nameservers you copied:
-   - `ns1.digitalocean.com`
-   - `ns2.digitalocean.com`
-   - `ns3.digitalocean.com`
-6. Click the checkmark to save
-7. **Note:** Nameserver changes can take 24-48 hours to propagate globally (though often much faster)
+2. Go to **Domain List** (from the main dashboard)
+3. Find `transitionforstrava.com` and click **Manage** (the green button on the right)
+4. You'll see several tabs at the top: **Domain**, **Nameservers**, **Advanced DNS**, etc.
+5. **Click on the "Nameservers" tab** (NOT "Advanced DNS")
+6. You'll see a section showing your current nameservers (likely "Namecheap BasicDNS" or similar)
+7. Click the dropdown/radio button to select **"Custom DNS"** (instead of "Namecheap BasicDNS")
+8. You'll see 2-4 input fields for nameservers. Enter the DigitalOcean nameservers you copied:
+   - **Nameserver 1:** `ns1.digitalocean.com`
+   - **Nameserver 2:** `ns2.digitalocean.com`
+   - **Nameserver 3:** `ns3.digitalocean.com`
+   - (If there's a 4th field, you can leave it blank or add `ns4.digitalocean.com` if DigitalOcean provided it)
+9. Click the **green checkmark** (✓) button to save
+10. You should see a confirmation message that the nameservers have been updated
+
+**Note:** 
+- The existing DNS records in "Advanced DNS" (like the CNAME and URL Redirect you see) will stop working once nameservers change - this is expected and correct
+- Nameserver changes can take 24-48 hours to propagate globally (though often much faster, sometimes within minutes)
+- You can verify propagation using `whatsmydns.net` - search for your domain and check the "NS" (nameserver) records
 
 ### 3. Add Domain to App Platform
 
