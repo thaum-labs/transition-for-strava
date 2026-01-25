@@ -8,51 +8,40 @@ The app code is already configured to work with any domain. The OAuth callback r
 
 ## 🔧 Required Configuration Updates
 
-### 1. Configure DNS in Namecheap
+### 1. Add Domain to DigitalOcean DNS
 
-**First, get the DNS values from DigitalOcean:**
+1. Log in to your DigitalOcean dashboard
+2. Go to **Networking** → **Domains** (in the left sidebar)
+3. Click **Add Domain**
+4. Enter your domain: `transitionforstrava.com`
+5. Click **Add Domain**
+6. DigitalOcean will display your nameservers (e.g., `ns1.digitalocean.com`, `ns2.digitalocean.com`, `ns3.digitalocean.com`)
+7. **Copy these nameservers** - you'll need them for the next step
+
+### 2. Update Nameservers in Namecheap
+
+1. Log in to your Namecheap account
+2. Go to **Domain List** → Click **Manage** next to `transitionforstrava.com`
+3. Navigate to the **Nameservers** section
+4. Select **Custom DNS** (instead of "Namecheap BasicDNS")
+5. Enter the DigitalOcean nameservers you copied:
+   - `ns1.digitalocean.com`
+   - `ns2.digitalocean.com`
+   - `ns3.digitalocean.com`
+6. Click the checkmark to save
+7. **Note:** Nameserver changes can take 24-48 hours to propagate globally (though often much faster)
+
+### 3. Add Domain to App Platform
 
 1. Go to your DigitalOcean App Platform dashboard
 2. Select your app
 3. Navigate to **Settings** → **Domains**
 4. Click **Add Domain** and enter: `transitionforstrava.com`
-5. DigitalOcean will show you the DNS records you need to configure (either CNAME or A records)
+5. DigitalOcean will automatically create the necessary DNS records (A or CNAME) in your DigitalOcean DNS
+6. Wait for DNS to propagate (check with `whatsmydns.net`)
+7. DigitalOcean will automatically provision an SSL certificate once DNS is verified (usually 5-15 minutes after DNS propagates)
 
-**Then, configure DNS in Namecheap:**
-
-1. Log in to your Namecheap account
-2. Go to **Domain List** → Click **Manage** next to `transitionforstrava.com`
-3. Navigate to the **Advanced DNS** tab
-4. You'll see existing DNS records. You need to add/modify records based on what DigitalOcean shows:
-
-   **If DigitalOcean provides a CNAME:**
-   - Click **Add New Record**
-   - Type: **CNAME Record**
-   - Host: `@` (or leave blank for root domain)
-   - Value: The CNAME target from DigitalOcean (e.g., `transition-app-vslqi.ondigitalocean.app`)
-   - TTL: Automatic (or 30 min)
-   - Click the checkmark to save
-
-   **If DigitalOcean provides A records (IP addresses):**
-   - Click **Add New Record** for each IP address
-   - Type: **A Record**
-   - Host: `@` (or leave blank for root domain)
-   - Value: The IP address from DigitalOcean
-   - TTL: Automatic (or 30 min)
-   - Click the checkmark to save
-
-5. **Remove conflicting records**: If you have any existing A or CNAME records for `@`, remove them first
-6. Save all changes
-
-**Note:** DNS changes can take a few minutes to several hours to propagate. You can check propagation status using tools like `whatsmydns.net`.
-
-### 2. DigitalOcean App Platform
-
-1. After adding the domain in DigitalOcean (step 1 above), wait for DNS to propagate
-2. DigitalOcean will automatically provision an SSL certificate once DNS is verified
-3. This usually takes 5-15 minutes after DNS propagation
-
-### 3. Update Environment Variables in DigitalOcean
+### 4. Update Environment Variables in DigitalOcean
 
 1. In DigitalOcean App Platform, go to **Settings** → **App-Level Environment Variables**
 2. Update `STRAVA_REDIRECT_URI` to:
@@ -61,7 +50,7 @@ The app code is already configured to work with any domain. The OAuth callback r
    ```
 3. Save changes (this will trigger a new deployment)
 
-### 4. Update Strava App Settings
+### 5. Update Strava App Settings
 
 1. Go to: https://www.strava.com/settings/api
 2. Click **Edit** on your API application
@@ -69,7 +58,7 @@ The app code is already configured to work with any domain. The OAuth callback r
 4. Update **Website** (if applicable) to: `https://transitionforstrava.com`
 5. Save changes
 
-### 5. Test the Migration
+### 6. Test the Migration
 
 1. Visit `https://transitionforstrava.com`
 2. Click "Continue with Strava"
@@ -91,15 +80,17 @@ The app code is already configured to work with any domain. The OAuth callback r
 
 **SSL certificate not working?**
 - Wait a few minutes for Let's Encrypt to provision the certificate (usually 5-15 minutes after DNS propagates)
-- Check DNS records are correctly configured in Namecheap
-- Verify the domain is properly added in DigitalOcean
+- Verify the domain is properly added in both DigitalOcean DNS and App Platform
 - Use `whatsmydns.net` to check if DNS has propagated globally
+- Ensure nameservers in Namecheap match DigitalOcean's nameservers exactly
 
 **DNS not resolving?**
-- Double-check the DNS records in Namecheap match exactly what DigitalOcean provided
-- Ensure you removed any conflicting A/CNAME records
-- Wait for DNS propagation (can take up to 48 hours, usually much faster)
+- Verify nameservers in Namecheap are set to DigitalOcean's nameservers
+- Check that the domain is added in DigitalOcean DNS (Networking → Domains)
+- Check that the domain is added in App Platform (Settings → Domains)
+- Wait for nameserver propagation (can take 24-48 hours, usually much faster)
 - Clear your local DNS cache: `ipconfig /flushdns` (Windows) or `sudo dscacheutil -flushcache` (Mac)
+- Use `whatsmydns.net` to check nameserver propagation globally
 
 **Still redirecting to old domain?**
 - Clear your browser cache and cookies
