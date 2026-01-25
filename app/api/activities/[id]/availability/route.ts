@@ -33,18 +33,14 @@ function streamArray(v: unknown): unknown[] | null {
   return null;
 }
 
-export async function GET(_req: Request, ctx: { params: unknown }) {
-  // Next.js may provide params in slightly different shapes across versions/runtimes.
-  // Be defensive: resolve if it's a Promise, and support both {id} and {params:{id}}.
-  const rawParams: unknown = await Promise.resolve((ctx as { params?: unknown }).params ?? ctx);
-  const candidate =
-    isRecord(rawParams) && "id" in rawParams
-      ? rawParams
-      : isRecord(rawParams) && "params" in rawParams
-        ? (rawParams as Record<string, unknown>).params
-        : rawParams;
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  // Next.js 15: route params are provided as a Promise.
+  const { id } = await params;
 
-  const parsedParams = ParamsSchema.safeParse(candidate);
+  const parsedParams = ParamsSchema.safeParse({ id });
   if (!parsedParams.success) {
     return NextResponse.json(
       {
