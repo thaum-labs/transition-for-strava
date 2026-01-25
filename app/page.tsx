@@ -13,6 +13,7 @@ export default function HomePage() {
             height={120}
             className="rounded-2xl"
             priority
+            style={{ background: "transparent" }}
           />
         </div>
         <div className="space-y-2">
@@ -55,8 +56,8 @@ export default function HomePage() {
       </Link>
 
       <p className="text-xs text-zinc-400">
-        Note: GPX/FIT are generated from Strava streams. FIT is synthesized (not
-        the original device file).
+        Note: GPX/FIT are generated from Strava streams using the Garmin FIT SDK.
+        FIT files include proper sport type and metadata.
       </p>
     </main>
   );

@@ -99,7 +99,9 @@ export async function GET(
         fit: hasGps
           ? { available: true }
           : { available: false, reason: "No GPS track available for this activity." },
-        notes: ["FIT is generated from Strava streams (not the original upload)."],
+        notes: [
+          "FIT files are generated using the Garmin FIT SDK from Strava GPS streams. Sport type is automatically set to cycling.",
+        ],
       },
       { headers: { "cache-control": "no-store" } },
     );
