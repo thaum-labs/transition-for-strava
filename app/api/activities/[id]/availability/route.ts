@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSession, setSession } from "@/src/lib/session";
 import { isProd } from "@/src/lib/env";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
-import { ensureFreshSession, stravaGetJson } from "@/src/lib/strava";
+import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
 
 export const runtime = "nodejs";
 
@@ -79,13 +79,14 @@ export async function GET(
   }
 
   const { session: fresh, refreshed } = await ensureFreshSession(session);
-  if (refreshed) await setSession(fresh);
 
   try {
-    const { data } = await stravaGetJson<StravaStreamSet>(
-      `/activities/${activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
-      fresh.strava.accessToken,
-    );
+    const { data, session: updatedSession, refreshed: tokenRefreshed } =
+      await stravaGetJsonWithRefresh<StravaStreamSet>(
+        `/activities/${activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
+        fresh,
+      );
+    if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
     const latlng = streamArray(data.latlng);
     const hasGps = !!latlng && latlng.length >= 2;

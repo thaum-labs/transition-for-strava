@@ -129,3 +129,40 @@ export async function stravaGetJson<T>(
   return { data: (await res.json()) as T, rateLimit };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function errorStatus(err: unknown): number | null {
+  if (!isRecord(err)) return null;
+  const status = err.status;
+  return typeof status === "number" ? status : null;
+}
+
+export async function stravaGetJsonWithRefresh<T>(
+  path: string,
+  session: SessionData,
+): Promise<{ data: T; rateLimit: RateLimitSnapshot; session: SessionData; refreshed: boolean }> {
+  try {
+    const { data, rateLimit } = await stravaGetJson<T>(path, session.strava.accessToken);
+    return { data, rateLimit, session, refreshed: false };
+  } catch (err: unknown) {
+    if (errorStatus(err) !== 401) throw err;
+    const refreshed = await refreshAccessToken(session.strava.refreshToken);
+    const refreshedSession: SessionData = {
+      ...session,
+      strava: {
+        ...session.strava,
+        accessToken: refreshed.access_token,
+        refreshToken: refreshed.refresh_token,
+        expiresAt: refreshed.expires_at,
+      },
+    };
+    const { data, rateLimit } = await stravaGetJson<T>(
+      path,
+      refreshedSession.strava.accessToken,
+    );
+    return { data, rateLimit, session: refreshedSession, refreshed: true };
+  }
+}
+

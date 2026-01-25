@@ -4,7 +4,7 @@ import { buildGpx } from "@/src/lib/gpx";
 import { gpxToFitBytes } from "@/src/lib/fit";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { getSession, readCsrfToken, setSession } from "@/src/lib/session";
-import { ensureFreshSession, stravaGetJson } from "@/src/lib/strava";
+import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
 
 export const runtime = "nodejs";
 
@@ -109,19 +109,22 @@ export async function GET(req: Request) {
   }
 
   const { session: fresh, refreshed } = await ensureFreshSession(session);
-  if (refreshed) await setSession(fresh);
 
   try {
-    const [{ data: activity }, { data: streams }] = await Promise.all([
-      stravaGetJson<StravaActivityDetail>(
-        `/activities/${parsed.data.activityId}`,
-        fresh.strava.accessToken,
-      ),
-      stravaGetJson<StravaStreamSet>(
-        `/activities/${parsed.data.activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
-        fresh.strava.accessToken,
-      ),
-    ]);
+    const activityResult = await stravaGetJsonWithRefresh<StravaActivityDetail>(
+      `/activities/${parsed.data.activityId}`,
+      fresh,
+    );
+    const streamsResult = await stravaGetJsonWithRefresh<StravaStreamSet>(
+      `/activities/${parsed.data.activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
+      activityResult.session,
+    );
+    if (refreshed || activityResult.refreshed || streamsResult.refreshed) {
+      await setSession(streamsResult.session);
+    }
+
+    const activity = activityResult.data;
+    const streams = streamsResult.data;
 
     const latlng = toLatLngPairs(streamArray(streams.latlng));
     const time = toNumberArray(streamArray(streams.time));

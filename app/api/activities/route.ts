@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
-import { ensureFreshSession, stravaGetJson } from "@/src/lib/strava";
+import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
 
 export const runtime = "nodejs";
 
@@ -61,7 +61,6 @@ export async function GET(req: Request) {
   }
 
   const { session: fresh, refreshed } = await ensureFreshSession(session);
-  if (refreshed) await setSession(fresh);
 
   const qs = new URLSearchParams({
     per_page: String(parsed.data.per_page),
@@ -71,10 +70,12 @@ export async function GET(req: Request) {
   if (parsed.data.after) qs.set("after", String(parsed.data.after));
 
   try {
-    const { data } = await stravaGetJson<StravaSummaryActivity[]>(
-      `/athlete/activities?${qs.toString()}`,
-      fresh.strava.accessToken,
-    );
+    const { data, session: updatedSession, refreshed: tokenRefreshed } =
+      await stravaGetJsonWithRefresh<StravaSummaryActivity[]>(
+        `/athlete/activities?${qs.toString()}`,
+        fresh,
+      );
+    if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
     const minimal = data.map((a) => ({
       id: a.id,
