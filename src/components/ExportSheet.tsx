@@ -65,6 +65,7 @@ export function ExportSheet({
       try {
         const res = await fetch(`/api/activities/${id}/availability`, {
           cache: "no-store",
+          credentials: "include",
         });
         if (!res.ok) {
           let reason = "Could not check availability.";
@@ -119,6 +120,7 @@ export function ExportSheet({
       const res = await fetch(url.toString(), {
         method: "GET",
         headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
       });
 
       if (!res.ok) {

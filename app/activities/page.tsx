@@ -26,7 +26,10 @@ export default function ActivitiesPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/csrf", { cache: "no-store" });
+      const res = await fetch("/api/csrf", {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (!res.ok) return;
       const json = (await res.json()) as { token: string };
       setCsrfToken(json.token);
@@ -50,7 +53,10 @@ export default function ActivitiesPage() {
       url.searchParams.set("page", "1");
       url.searchParams.set("after", String(after));
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await fetch(url.toString(), {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (res.status === 401) {
         setError("You’re not logged in. Please connect Strava again.");
         setActivities([]);
