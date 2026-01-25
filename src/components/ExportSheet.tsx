@@ -261,14 +261,6 @@ export function ExportSheet({
             </div>
           ) : null}
 
-          {availability?.notes?.length ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-300">
-              {availability.notes.map((n, i) => (
-                <div key={i}>{n}</div>
-              ))}
-            </div>
-          ) : null}
-
           <button
             type="button"
             disabled={!availability?.gpx.available}
@@ -319,6 +311,13 @@ export function ExportSheet({
             </button>
             {!availability?.fit.available && availability?.fit.reason ? (
               <div className="text-xs text-zinc-500">{availability.fit.reason}</div>
+            ) : null}
+            {availability?.notes?.length ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-300">
+                {availability.notes.map((n, i) => (
+                  <div key={i}>{n}</div>
+                ))}
+              </div>
             ) : null}
           </div>
 
