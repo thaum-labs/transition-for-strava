@@ -11,12 +11,48 @@ type Availability = {
   notes?: string[];
 };
 
-async function downloadFromResponse(res: Response, filenameFallback: string) {
+function getMimeType(format: Format): string {
+  return format === "gpx" ? "application/gpx+xml" : "application/vnd.ant.fit";
+}
+
+async function canShareFile(file: File): Promise<boolean> {
+  if (typeof navigator === "undefined") return false;
+  if (!navigator.canShare) return false;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+async function shareOrDownload(
+  res: Response,
+  filenameFallback: string,
+  format: Format,
+): Promise<"shared" | "downloaded"> {
   const blob = await res.blob();
   const cd = res.headers.get("content-disposition") ?? "";
   const match = cd.match(/filename="([^"]+)"/i);
   const filename = match?.[1] || filenameFallback;
 
+  // Create a File object for sharing
+  const file = new File([blob], filename, { type: getMimeType(format) });
+
+  // Try Web Share API first (works on mobile)
+  if (await canShareFile(file)) {
+    try {
+      await navigator.share({ files: [file] });
+      return "shared";
+    } catch (err) {
+      // User cancelled or share failed — fall through to download
+      if (err instanceof Error && err.name === "AbortError") {
+        // User cancelled share sheet, don't fall back to download
+        throw err;
+      }
+    }
+  }
+
+  // Fall back to download
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement("a");
@@ -29,6 +65,7 @@ async function downloadFromResponse(res: Response, filenameFallback: string) {
   } finally {
     URL.revokeObjectURL(url);
   }
+  return "downloaded";
 }
 
 export function ExportSheet({
@@ -49,7 +86,7 @@ export function ExportSheet({
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [didDownload, setDidDownload] = useState(false);
+  const [exportResult, setExportResult] = useState<"shared" | "downloaded" | null>(null);
 
   const id = activity?.id ?? null;
 
@@ -58,7 +95,7 @@ export function ExportSheet({
 
     setAvailability(null);
     setActionError(null);
-    setDidDownload(false);
+    setExportResult(null);
 
     void (async () => {
       setLoading(true);
@@ -111,7 +148,7 @@ export function ExportSheet({
     }
 
     setActionError(null);
-    setDidDownload(false);
+    setExportResult(null);
     try {
       const url = new URL("/api/export", window.location.origin);
       url.searchParams.set("activityId", String(activity.id));
@@ -129,13 +166,18 @@ export function ExportSheet({
         return;
       }
 
-      await downloadFromResponse(
+      const result = await shareOrDownload(
         res,
         `strava-activity-${activity.id}.${format}`,
+        format,
       );
       onFormatUsed(format);
-      setDidDownload(true);
-    } catch {
+      setExportResult(result);
+    } catch (err) {
+      // If user cancelled share sheet, don't show error
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setActionError("Export failed. Please try again.");
     }
   }
@@ -233,7 +275,11 @@ export function ExportSheet({
             </div>
           ) : null}
 
-          {didDownload ? (
+          {exportResult === "shared" ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-sm text-zinc-200">
+              File shared successfully.
+            </div>
+          ) : exportResult === "downloaded" ? (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-sm text-zinc-200">
               Download started. On iOS, open the file from Safari downloads / Files
               to share to another app.
