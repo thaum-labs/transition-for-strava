@@ -25,19 +25,26 @@ The app code is already configured to work with any domain. The OAuth callback r
 **Step-by-step instructions:**
 
 1. Log in to your Namecheap account
-2. Go to **Domain List** (from the main dashboard)
+2. Go to **Domain List** (from the main dashboard or left sidebar)
 3. Find `transitionforstrava.com` and click **Manage** (the green button on the right)
-4. You'll see several tabs at the top: **Domain**, **Nameservers**, **Advanced DNS**, etc.
-5. **Click on the "Nameservers" tab** (NOT "Advanced DNS")
-6. You'll see a section showing your current nameservers (likely "Namecheap BasicDNS" or similar)
-7. Click the dropdown/radio button to select **"Custom DNS"** (instead of "Namecheap BasicDNS")
-8. You'll see 2-4 input fields for nameservers. Enter the DigitalOcean nameservers you copied:
+4. You'll see several tabs at the top. Try one of these:
+   - **Option A:** Look for a **"Domain"** tab - click it, then scroll down to find the **"Nameservers"** section
+   - **Option B:** Look for a **"Nameservers"** tab directly - click it
+   - **Option C:** If you're on the main domain page, scroll down - the nameservers section might be below the other settings
+5. Once you find the **Nameservers** section, you'll see your current nameservers (likely showing "Namecheap BasicDNS" or similar)
+6. Click the dropdown menu next to nameservers and select **"Custom DNS"** (instead of "Namecheap BasicDNS" or "Namecheap Web Hosting DNS")
+7. You'll see 2-4 input fields for nameservers. Enter the DigitalOcean nameservers you copied:
    - **Nameserver 1:** `ns1.digitalocean.com`
    - **Nameserver 2:** `ns2.digitalocean.com`
    - **Nameserver 3:** `ns3.digitalocean.com`
    - (If there's a 4th field, you can leave it blank or add `ns4.digitalocean.com` if DigitalOcean provided it)
-9. Click the **green checkmark** (✓) button to save
-10. You should see a confirmation message that the nameservers have been updated
+8. Click the **green checkmark** (✓) or **Save** button to save
+9. You should see a confirmation message that the nameservers have been updated
+
+**Can't find it?** The nameservers section is usually:
+- On the same page as "Advanced DNS" but further down (scroll down)
+- Under the "Domain" tab (click Domain tab, then scroll)
+- Sometimes it's in a collapsible section - look for "Nameservers" or "DNS" in a dropdown/accordion
 
 **Note:** 
 - The existing DNS records in "Advanced DNS" (like the CNAME and URL Redirect you see) will stop working once nameservers change - this is expected and correct
