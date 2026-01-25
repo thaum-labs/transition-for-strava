@@ -70,12 +70,32 @@ export async function GET(req: Request) {
     },
   };
 
-  // Encrypt and set cookie directly on the redirect response using manual Set-Cookie header
+  // Encrypt session token
   const sessionToken = await encryptSessionToken(sessionData);
-  const response = NextResponse.redirect(new URL("/activities", origin));
-  response.headers.set("cache-control", "no-store");
-  response.headers.set("set-cookie", buildSetCookieHeader(SESSION_COOKIE_NAME, sessionToken));
+  const redirectUrl = new URL("/activities", origin).toString();
 
-  return response;
+  // Return an HTML page that sets the cookie (via Set-Cookie header) and redirects via JS.
+  // This works around Cloudflare/proxies stripping Set-Cookie from 302 redirects.
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting...</title>
+  <script>window.location.replace("${redirectUrl}");</script>
+</head>
+<body>
+  <p>Redirecting to your activities...</p>
+  <p><a href="${redirectUrl}">Click here if not redirected automatically.</a></p>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "set-cookie": buildSetCookieHeader(SESSION_COOKIE_NAME, sessionToken),
+    },
+  });
 }
 
