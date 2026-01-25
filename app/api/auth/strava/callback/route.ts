@@ -4,12 +4,22 @@ import { consumeOAuthState, setSession } from "@/src/lib/session";
 
 export const runtime = "nodejs";
 
+function publicOrigin(req: Request): string {
+  // Behind proxies (like DigitalOcean App Platform), req.url can be the internal container hostname.
+  // Use forwarded headers to build the real public origin.
+  const xfProto = req.headers.get("x-forwarded-proto");
+  const xfHost = req.headers.get("x-forwarded-host");
+  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
+  return new URL(req.url).origin;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  const origin = publicOrigin(req);
   const error = url.searchParams.get("error");
   if (error) {
     return NextResponse.redirect(
-      new URL(`/?error=${encodeURIComponent(error)}`, url.origin),
+      new URL(`/?error=${encodeURIComponent(error)}`, origin),
       { headers: { "cache-control": "no-store" } },
     );
   }
@@ -20,7 +30,7 @@ export async function GET(req: Request) {
 
   if (!code || !state) {
     // If someone visits the callback URL directly, redirect them to home
-    return NextResponse.redirect(new URL("/", url.origin), {
+    return NextResponse.redirect(new URL("/", origin), {
       headers: { "cache-control": "no-store" },
     });
   }
@@ -40,7 +50,7 @@ export async function GET(req: Request) {
     },
   });
 
-  return NextResponse.redirect(new URL("/activities", url.origin), {
+  return NextResponse.redirect(new URL("/activities", origin), {
     headers: { "cache-control": "no-store" },
   });
 }
