@@ -5,7 +5,7 @@ import { issueOAuthState } from "@/src/lib/session";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const state = issueOAuthState();
+  const state = await issueOAuthState();
 
   const clientId = requiredEnv("STRAVA_CLIENT_ID");
   const redirectUri = requiredEnv("STRAVA_REDIRECT_URI");

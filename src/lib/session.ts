@@ -29,6 +29,10 @@ function deriveKey(): Uint8Array {
   return createHash("sha256").update(secret).digest();
 }
 
+async function cookieStore() {
+  return await cookies();
+}
+
 async function encryptSession(session: SessionData): Promise<string> {
   const key = deriveKey();
   return await new EncryptJWT(session)
@@ -51,31 +55,35 @@ async function decryptSession(token: string): Promise<SessionData | null> {
 }
 
 export async function getSession(): Promise<SessionData | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const store = await cookieStore();
+  const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return await decryptSession(token);
 }
 
 export async function setSession(session: SessionData) {
   const token = await encryptSession(session);
-  cookies().set(SESSION_COOKIE, token, {
+  const store = await cookieStore();
+  store.set(SESSION_COOKIE, token, {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 60 * 60 * 24 * 30,
   });
 }
 
-export function clearSession() {
-  cookies().set(SESSION_COOKIE, "", {
+export async function clearSession() {
+  const store = await cookieStore();
+  store.set(SESSION_COOKIE, "", {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 0,
   });
 }
 
-export function issueOAuthState(): string {
+export async function issueOAuthState(): Promise<string> {
+  const store = await cookieStore();
   const state = randomBytes(24).toString("base64url");
-  cookies().set(OAUTH_STATE_COOKIE, state, {
+  store.set(OAUTH_STATE_COOKIE, state, {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 60 * 10,
@@ -83,9 +91,10 @@ export function issueOAuthState(): string {
   return state;
 }
 
-export function consumeOAuthState(expected: string): boolean {
-  const got = cookies().get(OAUTH_STATE_COOKIE)?.value;
-  cookies().set(OAUTH_STATE_COOKIE, "", {
+export async function consumeOAuthState(expected: string): Promise<boolean> {
+  const store = await cookieStore();
+  const got = store.get(OAUTH_STATE_COOKIE)?.value;
+  store.set(OAUTH_STATE_COOKIE, "", {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 0,
@@ -93,9 +102,10 @@ export function consumeOAuthState(expected: string): boolean {
   return !!got && got === expected;
 }
 
-export function issueCsrfToken(): string {
+export async function issueCsrfToken(): Promise<string> {
+  const store = await cookieStore();
   const token = randomBytes(24).toString("base64url");
-  cookies().set(CSRF_COOKIE, token, {
+  store.set(CSRF_COOKIE, token, {
     ...cookieBaseOptions(),
     httpOnly: false,
     maxAge: 60 * 60 * 12,
@@ -103,12 +113,14 @@ export function issueCsrfToken(): string {
   return token;
 }
 
-export function readCsrfToken(): string | null {
-  return cookies().get(CSRF_COOKIE)?.value ?? null;
+export async function readCsrfToken(): Promise<string | null> {
+  const store = await cookieStore();
+  return store.get(CSRF_COOKIE)?.value ?? null;
 }
 
-export function clearCsrfToken() {
-  cookies().set(CSRF_COOKIE, "", {
+export async function clearCsrfToken() {
+  const store = await cookieStore();
+  store.set(CSRF_COOKIE, "", {
     ...cookieBaseOptions(),
     httpOnly: false,
     maxAge: 0,

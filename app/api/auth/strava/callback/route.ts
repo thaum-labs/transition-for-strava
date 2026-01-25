@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     });
   }
 
-  if (!consumeOAuthState(state)) {
+  if (!(await consumeOAuthState(state))) {
     return new NextResponse("Invalid OAuth state.", { status: 400 });
   }
 

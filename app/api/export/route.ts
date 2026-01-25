@@ -83,7 +83,7 @@ export async function GET(req: Request) {
   }
 
   const csrfHeader = req.headers.get("x-csrf-token");
-  const csrfCookie = readCsrfToken();
+  const csrfCookie = await readCsrfToken();
   if (!csrfHeader || !csrfCookie || csrfHeader !== csrfCookie) {
     return new NextResponse("CSRF check failed.", {
       status: 403,

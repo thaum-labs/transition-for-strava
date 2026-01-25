@@ -4,8 +4,8 @@ import { clearCsrfToken, clearSession } from "@/src/lib/session";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  clearSession();
-  clearCsrfToken();
+  await clearSession();
+  await clearCsrfToken();
   return NextResponse.redirect(new URL("/", req.url), {
     headers: { "cache-control": "no-store" },
   });

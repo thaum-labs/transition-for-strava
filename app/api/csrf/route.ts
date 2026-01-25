@@ -4,7 +4,7 @@ import { issueCsrfToken } from "@/src/lib/session";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const token = issueCsrfToken();
+  const token = await issueCsrfToken();
   return NextResponse.json(
     { token },
     {
