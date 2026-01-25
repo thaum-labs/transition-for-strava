@@ -22,6 +22,10 @@ type StravaSummaryActivity = {
   moving_time: number;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 export async function GET(req: Request) {
   const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim();
   const rl = checkRateLimit({
@@ -84,8 +88,9 @@ export async function GET(req: Request) {
     return NextResponse.json(minimal, {
       headers: { "cache-control": "no-store" },
     });
-  } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 502;
+  } catch (e: unknown) {
+    const status =
+      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
     if (status === 401) {
       // Session may be stale/invalid; the UI will prompt re-login.
       return new NextResponse("Unauthorized.", {

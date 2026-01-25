@@ -18,22 +18,30 @@ type StravaStreamSet = {
   altitude?: StravaStream;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function hasDataArray(v: unknown): v is { data: unknown[] } {
+  return isRecord(v) && Array.isArray(v.data);
+}
+
 function streamArray(v: unknown): unknown[] | null {
   if (!v) return null;
   if (Array.isArray(v)) return v;
-  if (typeof v === "object" && v && Array.isArray((v as any).data)) return (v as any).data;
+  if (hasDataArray(v)) return v.data;
   return null;
 }
 
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
+export async function GET(_req: Request, ctx: { params: unknown }) {
   // Next.js may provide params in slightly different shapes across versions/runtimes.
   // Be defensive: resolve if it's a Promise, and support both {id} and {params:{id}}.
-  const rawParams: any = await Promise.resolve((ctx as any)?.params ?? ctx);
+  const rawParams: unknown = await Promise.resolve((ctx as { params?: unknown }).params ?? ctx);
   const candidate =
-    rawParams && typeof rawParams === "object" && "id" in rawParams
+    isRecord(rawParams) && "id" in rawParams
       ? rawParams
-      : rawParams && typeof rawParams === "object" && "params" in rawParams
-        ? (rawParams as any).params
+      : isRecord(rawParams) && "params" in rawParams
+        ? (rawParams as Record<string, unknown>).params
         : rawParams;
 
   const parsedParams = ParamsSchema.safeParse(candidate);
@@ -98,8 +106,9 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       },
       { headers: { "cache-control": "no-store" } },
     );
-  } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 502;
+  } catch (e: unknown) {
+    const status =
+      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
     if (status === 401) {
       return NextResponse.json(
         {
@@ -129,8 +138,9 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       );
     }
     // Log the actual error for debugging (but don't expose it to user)
-    console.error("Availability check failed:", e?.message || String(e));
-    const debugReason = !isProd() ? ` ${e?.message || ""}`.trim() : "";
+    const message = isRecord(e) && typeof e.message === "string" ? e.message : "";
+    console.error("Availability check failed:", message || String(e));
+    const debugReason = !isProd() ? ` ${message}`.trim() : "";
     return NextResponse.json(
       {
         gpx: {

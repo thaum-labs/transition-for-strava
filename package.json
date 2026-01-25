@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "generate-secret": "node scripts/generate-session-secret.js"
   },
   "dependencies": {
     "gpx2fit": "^0.0.5",

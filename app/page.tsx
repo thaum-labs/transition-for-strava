@@ -1,16 +1,18 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
     <main className="space-y-6">
       <header className="space-y-4 text-center">
         <div className="flex justify-center">
-          <img
+          <Image
             src="/logo.png"
             alt="Transition app logo"
             width={120}
             height={120}
             className="rounded-2xl"
+            priority
           />
         </div>
         <div className="space-y-2">

@@ -26,10 +26,18 @@ type StravaStreamSet = {
   altitude?: StravaStream;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function hasDataArray(v: unknown): v is { data: unknown[] } {
+  return isRecord(v) && Array.isArray(v.data);
+}
+
 function streamArray(v: unknown): unknown[] | null {
   if (!v) return null;
   if (Array.isArray(v)) return v;
-  if (typeof v === "object" && v && Array.isArray((v as any).data)) return (v as any).data;
+  if (hasDataArray(v)) return v.data;
   return null;
 }
 
@@ -164,8 +172,9 @@ export async function GET(req: Request) {
         "cache-control": "no-store",
       },
     });
-  } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 502;
+  } catch (e: unknown) {
+    const status =
+      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
     if (status === 401) {
       return new NextResponse("Unauthorized.", {
         status: 401,

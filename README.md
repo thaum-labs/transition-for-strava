@@ -123,17 +123,19 @@ flowchart TD
 
 ## Setup
 
-### 1) Create a Strava API application
+### Local Development
+
+#### 1) Create a Strava API application
 Create an app at `https://www.strava.com/settings/api`.
 
 For local dev (V1):
 - Set **Authorization Callback Domain** to `localhost`.
 - Set redirect URI to match `.env.local`, e.g. `http://localhost:3000/api/auth/strava/callback`.
 
-### 2) Configure environment variables
+#### 2) Configure environment variables
 Copy `.env.example` to `.env.local` and fill it in.
 
-### 3) Install and run
+#### 3) Install and run
 
 ```bash
 npm install
@@ -141,6 +143,10 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+### Production Deployment
+
+Deploy to your preferred hosting platform. The app requires Node.js and the environment variables listed in `.env.example`.
 
 ## New repo bootstrap (Thaum Labs)
 

@@ -1,5 +1,12 @@
 import { gpx2fitEncoder } from "gpx2fit";
 
+type Gpx2FitEncoderResult = {
+  header?: ArrayBuffer;
+  msgBuffers?: ArrayBuffer[];
+  dataArrayBuffer?: ArrayBuffer[];
+  trailer?: ArrayBuffer;
+};
+
 function concatArrayBuffers(buffers: ArrayBuffer[]): Uint8Array {
   const total = buffers.reduce((sum, b) => sum + b.byteLength, 0);
   const out = new Uint8Array(total);
@@ -12,7 +19,7 @@ function concatArrayBuffers(buffers: ArrayBuffer[]): Uint8Array {
 }
 
 export async function gpxToFitBytes(gpx: string): Promise<Uint8Array> {
-  const encoder: any = await gpx2fitEncoder(gpx);
+  const encoder = (await gpx2fitEncoder(gpx)) as unknown as Gpx2FitEncoderResult;
 
   const parts: ArrayBuffer[] = [];
   if (encoder.header) parts.push(encoder.header);

@@ -117,9 +117,12 @@ export async function stravaGetJson<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const err = new Error(`Strava request failed (${res.status}): ${text}`);
-    (err as any).status = res.status;
-    (err as any).rateLimit = rateLimit;
+    const err = new Error(`Strava request failed (${res.status}): ${text}`) as Error & {
+      status?: number;
+      rateLimit?: RateLimitSnapshot;
+    };
+    err.status = res.status;
+    err.rateLimit = rateLimit;
     throw err;
   }
 

@@ -3,8 +3,11 @@ type Entry = { count: number; resetAt: number };
 const STORE_KEY = "__pp_rate_limiter__";
 
 function store(): Map<string, Entry> {
-  const g = globalThis as any;
-  if (!g[STORE_KEY]) g[STORE_KEY] = new Map<string, Entry>();
+  const g = globalThis as typeof globalThis & Record<string, unknown>;
+  const existing = g[STORE_KEY];
+  if (!(existing instanceof Map)) {
+    g[STORE_KEY] = new Map<string, Entry>();
+  }
   return g[STORE_KEY] as Map<string, Entry>;
 }
 
