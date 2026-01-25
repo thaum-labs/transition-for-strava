@@ -12,6 +12,7 @@ export type FitStreams = {
   heartRate?: number[];
   cadence?: number[];
   power?: number[];
+  velocity?: number[]; // m/s from velocity_smooth
 };
 
 // FIT uses semicircles for position: 2^31 / 180
@@ -68,7 +69,7 @@ export function buildFit(params: {
   options?: FitOptions;
 }): Uint8Array {
   const { startDateUtc, streams, options = {} } = params;
-  const { latlng, time, altitude, heartRate, cadence, power } = streams;
+  const { latlng, time, altitude, heartRate, cadence, power, velocity } = streams;
 
   const n = latlng.length;
   if (n < 2) {
@@ -80,6 +81,7 @@ export function buildFit(params: {
   const hasHr = Array.isArray(heartRate) && heartRate.length === n;
   const hasCadence = Array.isArray(cadence) && cadence.length === n;
   const hasPower = Array.isArray(power) && power.length === n;
+  const hasVelocity = Array.isArray(velocity) && velocity.length === n;
 
   // Convert start date to FIT timestamp
   const startTimestamp = Utils.convertDateToDateTime(startDateUtc);
@@ -123,18 +125,52 @@ export function buildFit(params: {
   });
 
   // 4. RECORD messages - One per GPS point
+  // Track metrics for SESSION/LAP summary
   let lastTimestamp = startTimestamp;
   let totalDistance = 0;
+  let maxSpeed = 0; // m/s
+  let totalHeartRate = 0;
+  let heartRateCount = 0;
+  let elevationGain = 0;
+  let lastAltitude: number | undefined;
 
   for (let i = 0; i < n; i++) {
     const [lat, lon] = latlng[i];
     const timestamp = hasTime ? startTimestamp + time[i] : startTimestamp + i;
     
     // Calculate distance from previous point using Haversine formula
+    let segmentDistance = 0;
     if (i > 0) {
       const [prevLat, prevLon] = latlng[i - 1];
-      const dist = haversineDistance(prevLat, prevLon, lat, lon);
-      totalDistance += dist;
+      segmentDistance = haversineDistance(prevLat, prevLon, lat, lon);
+      totalDistance += segmentDistance;
+    }
+
+    // Calculate speed (m/s) - prefer velocity_smooth if available, otherwise calculate from distance/time
+    let currentSpeed = 0;
+    if (hasVelocity && velocity[i] !== undefined && velocity[i] > 0) {
+      currentSpeed = velocity[i];
+    } else if (hasTime && i > 0 && time[i] !== undefined && time[i - 1] !== undefined) {
+      const timeDelta = time[i] - time[i - 1];
+      if (timeDelta > 0) {
+        currentSpeed = segmentDistance / timeDelta;
+      }
+    }
+    if (currentSpeed > maxSpeed) maxSpeed = currentSpeed;
+
+    // Track heart rate for average
+    if (hasHr && heartRate[i] !== undefined && heartRate[i] > 0) {
+      totalHeartRate += heartRate[i];
+      heartRateCount++;
+    }
+
+    // Calculate elevation gain
+    if (hasAlt && altitude[i] !== undefined) {
+      const currentAlt = altitude[i];
+      if (lastAltitude !== undefined && currentAlt > lastAltitude) {
+        elevationGain += currentAlt - lastAltitude;
+      }
+      lastAltitude = currentAlt;
     }
 
     const record: Record<string, unknown> = {
@@ -156,10 +192,17 @@ export function buildFit(params: {
     if (hasPower && power[i] !== undefined) {
       record.power = Math.round(power[i]);
     }
+    if (currentSpeed > 0) {
+      record.speed = currentSpeed; // m/s
+    }
 
     encoder.onMesg(Profile.MesgNum.RECORD, record);
     lastTimestamp = timestamp;
   }
+
+  // Calculate average metrics
+  const averageSpeed = totalElapsedTime > 0 ? totalDistance / totalElapsedTime : 0; // m/s
+  const averageHeartRate = heartRateCount > 0 ? Math.round(totalHeartRate / heartRateCount) : undefined;
 
   // 5. EVENT - Timer stop
   encoder.onMesg(Profile.MesgNum.EVENT, {
@@ -168,8 +211,8 @@ export function buildFit(params: {
     eventType: "stop",
   });
 
-  // 6. LAP - Required
-  encoder.onMesg(Profile.MesgNum.LAP, {
+  // 6. LAP - Required (include summary metrics)
+  const lapMessage: Record<string, unknown> = {
     messageIndex: 0,
     timestamp: lastTimestamp,
     startTime: startTimestamp,
@@ -178,10 +221,21 @@ export function buildFit(params: {
     totalDistance: totalDistance,
     sport: sportName,
     subSport: subSport,
-  });
+    avgSpeed: averageSpeed, // m/s
+    maxSpeed: maxSpeed, // m/s
+  };
 
-  // 7. SESSION - Required (includes sport type!)
-  encoder.onMesg(Profile.MesgNum.SESSION, {
+  if (elevationGain > 0) {
+    lapMessage.totalAscent = Math.round(elevationGain);
+  }
+  if (averageHeartRate !== undefined) {
+    lapMessage.avgHeartRate = averageHeartRate;
+  }
+
+  encoder.onMesg(Profile.MesgNum.LAP, lapMessage);
+
+  // 7. SESSION - Required (includes sport type and summary metrics!)
+  const sessionMessage: Record<string, unknown> = {
     messageIndex: 0,
     timestamp: lastTimestamp,
     startTime: startTimestamp,
@@ -192,7 +246,18 @@ export function buildFit(params: {
     subSport: subSport,
     firstLapIndex: 0,
     numLaps: 1,
-  });
+    avgSpeed: averageSpeed, // m/s
+    maxSpeed: maxSpeed, // m/s
+  };
+
+  if (elevationGain > 0) {
+    sessionMessage.totalAscent = Math.round(elevationGain);
+  }
+  if (averageHeartRate !== undefined) {
+    sessionMessage.avgHeartRate = averageHeartRate;
+  }
+
+  encoder.onMesg(Profile.MesgNum.SESSION, sessionMessage);
 
   // 8. ACTIVITY - Required (exactly one)
   encoder.onMesg(Profile.MesgNum.ACTIVITY, {

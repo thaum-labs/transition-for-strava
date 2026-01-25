@@ -190,6 +190,7 @@ export async function GET(req: Request) {
         heartRate: heartRate ?? undefined,
         cadence: cadence ?? undefined,
         power: power ?? undefined,
+        velocity: velocity ?? undefined,
       },
       options: { sportType },
     });
