@@ -3,7 +3,7 @@ import { EncryptJWT, jwtDecrypt } from "jose";
 import { createHash, randomBytes } from "node:crypto";
 import { isProd, requiredEnv } from "@/src/lib/env";
 
-const SESSION_COOKIE = "pp_session";
+export const SESSION_COOKIE_NAME = "pp_session";
 const OAUTH_STATE_COOKIE = "pp_oauth_state";
 const CSRF_COOKIE = "pp_csrf";
 
@@ -56,7 +56,7 @@ async function decryptSession(token: string): Promise<SessionData | null> {
 
 export async function getSession(): Promise<SessionData | null> {
   const store = await cookieStore();
-  const token = store.get(SESSION_COOKIE)?.value;
+  const token = store.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
   return await decryptSession(token);
 }
@@ -64,7 +64,7 @@ export async function getSession(): Promise<SessionData | null> {
 export async function setSession(session: SessionData) {
   const token = await encryptSession(session);
   const store = await cookieStore();
-  store.set(SESSION_COOKIE, token, {
+  store.set(SESSION_COOKIE_NAME, token, {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 60 * 60 * 24 * 30,
@@ -73,7 +73,7 @@ export async function setSession(session: SessionData) {
 
 export async function clearSession() {
   const store = await cookieStore();
-  store.set(SESSION_COOKIE, "", {
+  store.set(SESSION_COOKIE_NAME, "", {
     ...cookieBaseOptions(),
     httpOnly: true,
     maxAge: 0,
