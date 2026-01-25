@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { createHash, randomBytes } from "node:crypto";
-import { isProd, requiredEnv } from "@/src/lib/env";
+import { isProd, optionalEnv, requiredEnv } from "@/src/lib/env";
 
 export const SESSION_COOKIE_NAME = "pp_session";
 const OAUTH_STATE_COOKIE = "pp_oauth_state";
@@ -16,11 +16,25 @@ export type SessionData = {
   };
 };
 
+function cookieDomain(): string | undefined {
+  const base = optionalEnv("APP_BASE_URL");
+  if (!base) return undefined;
+  try {
+    const host = new URL(base).hostname;
+    if (host === "localhost" || host === "127.0.0.1") return undefined;
+    return host;
+  } catch {
+    return undefined;
+  }
+}
+
 function cookieBaseOptions() {
+  const domain = cookieDomain();
   return {
     path: "/",
     sameSite: "lax" as const,
     secure: isProd(),
+    ...(domain ? { domain } : {}),
   };
 }
 
