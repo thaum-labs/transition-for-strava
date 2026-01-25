@@ -24,23 +24,29 @@ The app code is already configured to work with any domain. The OAuth callback r
 
 **Step-by-step instructions:**
 
+**⚠️ Important:** The "PERSONAL DNS SERVER" tab is NOT what you need. That's for registering custom nameservers. You need to set your domain's nameservers to DigitalOcean's.
+
 1. Log in to your Namecheap account
 2. Go to **Domain List** (from the main dashboard or left sidebar)
 3. Find `transitionforstrava.com` and click **Manage** (the green button on the right)
-4. Look for the **"PERSONAL DNS SERVER"** tab (it may be on the left side or in the tab navigation)
-5. Click on the **"PERSONAL DNS SERVER"** tab
-6. You'll see a dropdown menu that currently says **"Standard Nameservers"** (with a dotted underline and a down arrow)
-7. **Click on the "Standard Nameservers" dropdown** to open it
-8. Select **"Custom DNS"** from the dropdown options (this will change the interface to show input fields for custom nameservers)
-9. You'll now see 2-4 input fields for nameservers. Enter the DigitalOcean nameservers you copied:
-   - **Nameserver 1:** `ns1.digitalocean.com`
-   - **Nameserver 2:** `ns2.digitalocean.com`
-   - **Nameserver 3:** `ns3.digitalocean.com`
-   - (If there's a 4th field, you can leave it blank or add `ns4.digitalocean.com` if DigitalOcean provided it)
-10. Click the **green checkmark** (✓) or **Save** button to save
-11. You should see a confirmation message that the nameservers have been updated
+4. Look at the tabs at the top. You should see tabs like: **Domain**, **Advanced DNS**, **PERSONAL DNS SERVER**, etc.
+5. **Click on the "Domain" tab** (NOT "PERSONAL DNS SERVER")
+6. Scroll down on the Domain tab page
+7. Look for a section labeled **"Nameservers"** or **"Nameserver Selection"**
+8. You should see a dropdown or selection that shows your current nameservers (likely "Namecheap BasicDNS" or "Namecheap Web Hosting DNS")
+9. Click the dropdown/selection and choose **"Custom DNS"** (or "Custom Nameservers")
+10. You'll now see 2-4 input fields for nameservers. Enter the DigitalOcean nameservers you copied:
+    - **Nameserver 1:** `ns1.digitalocean.com`
+    - **Nameserver 2:** `ns2.digitalocean.com`
+    - **Nameserver 3:** `ns3.digitalocean.com`
+    - (If there's a 4th field, you can leave it blank or add `ns4.digitalocean.com` if DigitalOcean provided it)
+11. Click the **green checkmark** (✓) or **Save** button to save
+12. You should see a confirmation message that the nameservers have been updated
 
-**Note:** If you don't see the "PERSONAL DNS SERVER" tab, try clicking on the **"Domain"** tab instead - the nameservers dropdown might be there.
+**Can't find it on the Domain tab?** Try:
+- Look for a section called "Nameservers" or "DNS" - it might be in a collapsible section
+- Scroll all the way down the Domain tab page
+- The nameservers section might be near the bottom of the page
 
 **Note:** 
 - The existing DNS records in "Advanced DNS" (like the CNAME and URL Redirect you see) will stop working once nameservers change - this is expected and correct
