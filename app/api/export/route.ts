@@ -18,6 +18,8 @@ type StravaActivityDetail = {
   id: number;
   name: string;
   start_date: string;
+  calories?: number;
+  kilojoules?: number;
 };
 
 type StravaStream = { data?: unknown };
@@ -154,6 +156,9 @@ export async function GET(req: Request) {
       });
     }
 
+    // Prefer calories over kilojoules (calories is the actual energy expenditure)
+    const calories = activity.calories ?? (activity.kilojoules ? Math.round(activity.kilojoules * 0.239) : undefined);
+
     const gpx = buildGpx({
       activityName: activity.name,
       startDateUtc,
@@ -162,6 +167,7 @@ export async function GET(req: Request) {
         time: time ?? undefined,
         altitude: altitude ?? undefined,
       },
+      calories,
     });
 
     // Avoid bigint precision issues: use the requested id (string) for the filename.
@@ -193,6 +199,7 @@ export async function GET(req: Request) {
         velocity: velocity ?? undefined,
       },
       options: { sportType },
+      calories,
     });
     const fitBody = Buffer.from(fitBytes);
     return new NextResponse(fitBody, {

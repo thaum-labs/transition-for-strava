@@ -17,8 +17,9 @@ export function buildGpx(params: {
   activityName: string;
   startDateUtc: Date;
   streams: Streams;
+  calories?: number;
 }): string {
-  const { activityName, startDateUtc, streams } = params;
+  const { activityName, startDateUtc, streams, calories } = params;
   const { latlng, time, altitude } = streams;
 
   const n = latlng.length;
@@ -37,12 +38,19 @@ export function buildGpx(params: {
 
   const nameXml = escapeXml(activityName || "Strava activity");
   const metaTime = startDateUtc.toISOString();
+  
+  // Add calories as extension in metadata if available
+  const caloriesXml = calories !== undefined && calories > 0
+    ? `    <extensions>
+      <calories>${Math.round(calories)}</calories>
+    </extensions>`
+    : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Transition for Strava" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata>
     <name>${nameXml}</name>
-    <time>${metaTime}</time>
+    <time>${metaTime}</time>${caloriesXml ? `\n${caloriesXml}` : ""}
   </metadata>
   <trk>
     <name>${nameXml}</name>

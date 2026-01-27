@@ -67,8 +67,9 @@ export function buildFit(params: {
   startDateUtc: Date;
   streams: FitStreams;
   options?: FitOptions;
+  calories?: number;
 }): Uint8Array {
-  const { startDateUtc, streams, options = {} } = params;
+  const { startDateUtc, streams, options = {}, calories } = params;
   const { latlng, time, altitude, heartRate, cadence, power, velocity } = streams;
 
   const n = latlng.length;
@@ -231,6 +232,9 @@ export function buildFit(params: {
   if (averageHeartRate !== undefined) {
     lapMessage.avgHeartRate = averageHeartRate;
   }
+  if (calories !== undefined && calories > 0) {
+    lapMessage.totalCalories = Math.round(calories);
+  }
 
   encoder.onMesg(Profile.MesgNum.LAP, lapMessage);
 
@@ -255,6 +259,9 @@ export function buildFit(params: {
   }
   if (averageHeartRate !== undefined) {
     sessionMessage.avgHeartRate = averageHeartRate;
+  }
+  if (calories !== undefined && calories > 0) {
+    sessionMessage.totalCalories = Math.round(calories);
   }
 
   encoder.onMesg(Profile.MesgNum.SESSION, sessionMessage);
