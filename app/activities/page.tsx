@@ -119,8 +119,8 @@ export default function ActivitiesPage() {
           </button>
         </div>
         <p className="text-xs text-zinc-400">
-          GPX and FIT are generated from Strava streams. FIT is synthesized (not
-          the original upload).
+          Pick a time range, filter or search, then tap <strong>Export</strong> on
+          an activity to download GPX or FIT.
         </p>
       </header>
 
