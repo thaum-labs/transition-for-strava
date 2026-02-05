@@ -18,12 +18,20 @@ export default function HomePage() {
         </div>
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">Transition for Strava</h1>
-          <p className="text-sm text-zinc-300">
-            Log in, pick an activity, choose an export format, download, then share
-            from your device.
+          <p className="text-sm font-medium text-zinc-200">
+            Export your Strava activities as GPX or FIT files in one tap — then share
+            or import them into other apps and devices.
           </p>
         </div>
       </header>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-center">
+        <p className="text-sm text-zinc-300">
+          Use it to back up rides, move activities to Garmin or Zepp, build custom
+          maps, or keep a local archive. No account here — we only use Strava to
+          log in and read your activities.
+        </p>
+      </section>
 
       <div className="flex justify-center">
         <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-4 py-2">
@@ -54,11 +62,6 @@ export default function HomePage() {
       >
         Continue with Strava
       </Link>
-
-      <p className="text-xs text-zinc-400">
-        Note: GPX/FIT are generated from Strava streams using the Garmin FIT SDK.
-        FIT files include proper sport type and metadata.
-      </p>
     </main>
   );
 }

@@ -14,7 +14,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-zinc-950 text-zinc-50 antialiased">
-        <div className="mx-auto min-h-dvh w-full max-w-xl px-4 py-6">
+        <div className="relative mx-auto min-h-dvh w-full max-w-xl px-4 py-6">
+          <div className="absolute right-4 top-4 z-10">
+            <span className="rounded-full border border-amber-500/50 bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-200">
+              Beta
+            </span>
+          </div>
           {children}
         </div>
       </body>
