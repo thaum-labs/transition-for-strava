@@ -36,8 +36,8 @@ type SegmentEffortRow = {
   is_fastest?: boolean;
 };
 
-const CHART_PAD = { left: 4, right: 22, top: 6, bottom: 20 };
-const CHART_VIEW = { w: 280, h: 120 };
+const CHART_PAD = { left: 6, right: 36, top: 14, bottom: 20 };
+const CHART_VIEW = { w: 500, h: 112 };
 
 function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
   if (efforts.length === 0) return null;
@@ -95,7 +95,7 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
       <svg
         viewBox={`0 0 ${CHART_VIEW.w} ${CHART_VIEW.h}`}
         className="h-28 w-full"
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
       >
         {/* Line */}
         <path
