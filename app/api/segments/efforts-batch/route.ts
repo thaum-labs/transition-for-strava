@@ -10,6 +10,7 @@ const MAX_SEGMENTS = 25;
 const STRAVA_TIMEOUT_MS = 8_000;
 const SUMMIT_REQUIRED_MSG =
   "Segment efforts require a Strava Summit subscription.";
+const FREE_TIER_ACTIVITIES_LIMIT = 15;
 
 type StravaSegmentSummary = {
   elevation_high?: number;
@@ -123,6 +124,102 @@ async function fetchEffortsForSegment(
   return { error: SUMMIT_REQUIRED_MSG };
 }
 
+// Free tier: "segment efforts within activities" are available. Fetch recent
+// activities and extract most recent effort per starred segment.
+type ActivitySegmentEffort = {
+  elapsed_time: number;
+  moving_time: number;
+  distance: number;
+  start_date: string;
+  average_watts?: number;
+  average_heartrate?: number;
+  max_heartrate?: number;
+  segment?: { id: number; elevation_high?: number; elevation_low?: number };
+  [key: string]: unknown;
+};
+
+type DetailedActivity = {
+  id: number;
+  segment_efforts?: ActivitySegmentEffort[];
+  [key: string]: unknown;
+};
+
+function activityEffortToRow(e: ActivitySegmentEffort): SegmentEffortRow {
+  const movingTimeHours = e.moving_time / 3600;
+  const speedKmh = movingTimeHours > 0 ? e.distance / 1000 / movingTimeHours : null;
+  const seg = e.segment;
+  const elevHigh = seg?.elevation_high;
+  const elevLow = seg?.elevation_low;
+  const elevGain =
+    elevHigh != null && elevLow != null ? elevHigh - elevLow : null;
+  const elapsedHours = e.elapsed_time / 3600;
+  const vam = elevGain != null && elapsedHours > 0 ? elevGain / elapsedHours : null;
+  return {
+    elapsed_time: e.elapsed_time,
+    moving_time: e.moving_time,
+    distance: e.distance,
+    start_date: e.start_date,
+    average_watts: e.average_watts ?? null,
+    average_heartrate: e.average_heartrate ?? null,
+    max_heartrate: e.max_heartrate ?? null,
+    speed_kmh: speedKmh != null ? Math.round(speedKmh * 10) / 10 : null,
+    vam_mh: vam != null ? Math.round(vam) : null,
+  };
+}
+
+async function fetchEffortsFromActivities(
+  session: SessionData,
+  segmentIdSet: Set<string>,
+): Promise<Map<string, SegmentEffortRow>> {
+  const out = new Map<string, SegmentEffortRow>();
+  let currentSession = session;
+  try {
+    const { data: activities, session: s1, refreshed } =
+      await stravaGetJsonWithRefresh<{ id: number }[]>(
+        `/athlete/activities?per_page=${FREE_TIER_ACTIVITIES_LIMIT}&page=1`,
+        currentSession,
+        { timeoutMs: STRAVA_TIMEOUT_MS },
+      );
+    currentSession = s1;
+    if (refreshed) await setSession(s1);
+    if (!Array.isArray(activities) || activities.length === 0) return out;
+
+    const ids = activities.slice(0, FREE_TIER_ACTIVITIES_LIMIT).map((a) => a.id);
+    const details = await Promise.all(
+      ids.map((id) =>
+        stravaGetJsonWithRefresh<DetailedActivity>(
+          `/activities/${id}?include_all_efforts=true`,
+          currentSession,
+          { timeoutMs: STRAVA_TIMEOUT_MS },
+        ).then((r) => {
+          if (r.refreshed) void setSession(r.session);
+          return r.data;
+        }),
+      ),
+    );
+
+    for (const activity of details) {
+      const efforts = activity?.segment_efforts;
+      if (!Array.isArray(efforts)) continue;
+      for (const e of efforts) {
+        const segId = e.segment?.id != null ? String(e.segment.id) : null;
+        if (!segId || !segmentIdSet.has(segId)) continue;
+        const existing = out.get(segId);
+        const row = activityEffortToRow(e);
+        if (
+          !existing ||
+          new Date(row.start_date).getTime() > new Date(existing.start_date).getTime()
+        ) {
+          out.set(segId, row);
+        }
+      }
+    }
+  } catch {
+    // Return whatever we have; caller will show Summit for missing segments.
+  }
+  return out;
+}
+
 export type EffortsBatchResult = Record<
   string,
   { efforts: SegmentEffortRow[] } | { error: string }
@@ -198,11 +295,25 @@ export async function POST(req: Request) {
   );
 
   const byId: EffortsBatchResult = {};
+  let all402 = true;
   for (const r of results) {
     if ("efforts" in r && r.efforts !== undefined) {
       byId[r.id] = { efforts: r.efforts };
+      all402 = false;
     } else {
       byId[r.id] = { error: "error" in r ? r.error : "Unknown error" };
+      if ("error" in r && r.error !== SUMMIT_REQUIRED_MSG) all402 = false;
+    }
+  }
+
+  if (all402) {
+    const fromActivities = await fetchEffortsFromActivities(
+      fresh,
+      new Set(segmentIds),
+    );
+    for (const segmentId of segmentIds) {
+      const effort = fromActivities.get(segmentId);
+      if (effort) byId[segmentId] = { efforts: [effort] };
     }
   }
 
