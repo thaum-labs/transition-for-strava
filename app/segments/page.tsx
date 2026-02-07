@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -45,16 +45,19 @@ function normalizeErrorResponse(text: string, fallback: string): string {
 function SegmentBlock({
   segmentId,
   initialDetail,
-  loadOrder = 0,
+  mayLoadEfforts,
+  onEffortsDone,
 }: {
   segmentId: string;
   initialDetail: SegmentDetail | null;
-  loadOrder?: number;
+  mayLoadEfforts: boolean;
+  onEffortsDone: () => void;
 }) {
   const [detail, setDetail] = useState<SegmentDetail | null>(initialDetail);
   const [efforts, setEfforts] = useState<SegmentEffortRow[] | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [effortsError, setEffortsError] = useState<string | null>(null);
+  const effortsDoneRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,13 +93,17 @@ function SegmentBlock({
         }
       })();
     }
+  }, [segmentId, initialDetail]);
 
+  useEffect(() => {
+    if (!mayLoadEfforts || !detail) return;
+    effortsDoneRef.current = false;
     setEfforts(null);
     setEffortsError(null);
 
-    const delayMs = loadOrder * 600;
-    const t = setTimeout(() => {
-      void (async () => {
+    let cancelled = false;
+    void (async () => {
+      try {
         const base = window.location.origin;
         const effRes = await fetch(
           `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`,
@@ -122,14 +129,20 @@ function SegmentBlock({
         } catch {
           setEffortsError("Failed to load efforts.");
         }
-      })();
-    }, delayMs);
+      } catch {
+        setEffortsError("Failed to load efforts.");
+      } finally {
+        if (!effortsDoneRef.current) {
+          effortsDoneRef.current = true;
+          onEffortsDone();
+        }
+      }
+    });
 
     return () => {
       cancelled = true;
-      clearTimeout(t);
     };
-  }, [segmentId, initialDetail, loadOrder]);
+  }, [segmentId, detail, mayLoadEfforts, onEffortsDone]);
 
   const loading = detail === null && detailError === null;
   const error = detailError ?? effortsError;
@@ -218,6 +231,11 @@ type StarredSegment = {
 export default function SegmentsPage() {
   const [starred, setStarred] = useState<StarredSegment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [allowedEffortIndex, setAllowedEffortIndex] = useState(0);
+
+  const onEffortsDone = useCallback(() => {
+    setAllowedEffortIndex((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,6 +258,7 @@ export default function SegmentsPage() {
       }
       const data = (await res.json()) as StarredSegment[];
       setStarred(data);
+      setAllowedEffortIndex(0);
     })();
     return () => {
       cancelled = true;
@@ -304,7 +323,8 @@ export default function SegmentsPage() {
             <SegmentBlock
               key={seg.id}
               segmentId={seg.id}
-              loadOrder={i}
+              mayLoadEfforts={i === allowedEffortIndex}
+              onEffortsDone={onEffortsDone}
               initialDetail={{
                 name: seg.name,
                 distance: seg.distance,
