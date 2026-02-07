@@ -36,6 +36,10 @@ function isHtmlResponse(text: string): boolean {
   return t.startsWith("<!") || t.includes("</html>");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function normalizeErrorResponse(text: string, fallback: string): string {
   if (!text || text.length > 500) return fallback;
   if (isHtmlResponse(text)) return SERVER_ERROR_MSG;
@@ -109,10 +113,22 @@ function SegmentBlock({
     void (async () => {
       try {
         const base = window.location.origin;
-        const effRes = await fetch(
-          `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`,
-          { cache: "no-store", credentials: "include" },
-        );
+        const effortUrl = `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`;
+        const retryDelays = [1000, 2000, 4000];
+        let effRes: Response | null = null;
+        for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+          effRes = await fetch(effortUrl, {
+            cache: "no-store",
+            credentials: "include",
+          });
+          if (cancelledRef.current) return;
+          if (effRes.status !== 504) break;
+          if (attempt < retryDelays.length) {
+            await sleep(retryDelays[attempt]);
+            if (cancelledRef.current) return;
+          }
+        }
+        if (!effRes) return;
         if (cancelledRef.current) return;
         if (!effRes.ok) {
           const raw = await effRes.text().catch(() => "");
