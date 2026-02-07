@@ -94,14 +94,14 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
     <figure className="my-2 w-full" aria-label="Effort timeline">
       <svg
         viewBox={`0 0 ${CHART_VIEW.w} ${CHART_VIEW.h}`}
-        className="h-28 w-full max-w-md"
-        preserveAspectRatio="xMinYMid meet"
+        className="h-28 w-full"
+        preserveAspectRatio="xMinYMid slice"
       >
         {/* Line */}
         <path
           d={linePath}
           fill="none"
-          stroke="rgb(251,191,36)"
+          stroke="#f97216"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -113,8 +113,8 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
             cx={p.x}
             cy={p.y}
             r={p.is_fastest ? 5 : 3.5}
-            fill={p.is_fastest ? "rgb(251,191,36)" : "rgb(39,39,42)"}
-            stroke="rgb(251,191,36)"
+            fill={p.is_fastest ? "#f97216" : "rgb(39,39,42)"}
+            stroke="#f97216"
             strokeWidth={p.is_fastest ? 2 : 1}
           />
         ))}
@@ -124,7 +124,7 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
             x={fastestPoint.x}
             y={fastestPoint.y - 8}
             textAnchor="middle"
-            style={{ fill: "rgb(251,191,36)", fontSize: 10 }}
+            style={{ fill: "#f97216", fontSize: 10 }}
           >
             ★
           </text>
@@ -249,54 +249,54 @@ function SegmentBlock({
             <>
               <SegmentChart efforts={efforts} />
               <table className="w-full min-w-[320px] text-left text-xs">
-                <thead>
-                  <tr className="border-b border-zinc-700 text-zinc-400">
-                    <th className="py-1.5 pr-2 font-medium">Date</th>
-                    <th className="py-1.5 pr-2 font-medium">Time</th>
-                    <th className="py-1.5 pr-2 font-medium">Speed</th>
-                    <th className="py-1.5 pr-2 font-medium">Power</th>
-                    <th className="py-1.5 pr-2 font-medium">VAM</th>
-                    <th className="py-1.5 pr-2 font-medium">Heart rate</th>
+              <thead>
+                <tr className="border-b border-zinc-700 text-zinc-400">
+                  <th className="py-1.5 pr-2 font-medium">Date</th>
+                  <th className="py-1.5 pr-2 font-medium">Time</th>
+                  <th className="py-1.5 pr-2 font-medium">Speed</th>
+                  <th className="py-1.5 pr-2 font-medium">Power</th>
+                  <th className="py-1.5 pr-2 font-medium">VAM</th>
+                  <th className="py-1.5 pr-2 font-medium">Heart rate</th>
+                </tr>
+              </thead>
+              <tbody className="text-zinc-200">
+                {efforts.map((row, i) => (
+                  <tr key={i} className="border-b border-zinc-800/80">
+                    <td className="py-1.5 pr-2 whitespace-nowrap">
+                      {formatEffortDate(row.start_date)}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <span className="inline-flex items-center gap-1">
+                        {row.is_fastest && (
+                          <span
+                            className="text-[#f97216]"
+                            title="Fastest time"
+                            aria-label="Fastest time"
+                          >
+                            ★
+                          </span>
+                        )}
+                        {formatElapsed(row.elapsed_time)}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {row.speed_kmh != null ? `${row.speed_kmh} km/h` : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {row.average_watts != null ? `${row.average_watts} W` : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {row.vam_mh != null ? `${row.vam_mh} m/h` : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {row.average_heartrate != null
+                        ? `${row.average_heartrate} bpm`
+                        : "—"}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="text-zinc-200">
-                  {efforts.map((row, i) => (
-                    <tr key={i} className="border-b border-zinc-800/80">
-                      <td className="py-1.5 pr-2 whitespace-nowrap">
-                        {formatEffortDate(row.start_date)}
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        <span className="inline-flex items-center gap-1">
-                          {row.is_fastest && (
-                            <span
-                              className="text-amber-400"
-                              title="Fastest time"
-                              aria-label="Fastest time"
-                            >
-                              ★
-                            </span>
-                          )}
-                          {formatElapsed(row.elapsed_time)}
-                        </span>
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        {row.speed_kmh != null ? `${row.speed_kmh} km/h` : "—"}
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        {row.average_watts != null ? `${row.average_watts} W` : "—"}
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        {row.vam_mh != null ? `${row.vam_mh} m/h` : "—"}
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        {row.average_heartrate != null
-                          ? `${row.average_heartrate} bpm`
-                          : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
             </>
           ) : (
             <p className="text-xs text-zinc-500">No attempts on this segment.</p>
@@ -425,7 +425,7 @@ export default function SegmentsPage() {
             href="https://www.strava.com/athlete/segments/starred"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-amber-400 hover:underline"
+            className="text-[#f97216] hover:underline"
           >
             Strava → My Segments
           </a>
@@ -451,7 +451,7 @@ export default function SegmentsPage() {
               href="https://www.strava.com/athlete/segments/starred"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-amber-400 hover:underline"
+              className="text-[#f97216] hover:underline"
             >
               My Segments
             </a>
