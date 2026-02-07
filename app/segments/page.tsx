@@ -102,6 +102,15 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
     y: CHART_PAD.top + ch - ((t - minTime) / (timeRange || 1)) * ch,
   }));
 
+  // Sub-dividing ticks between major ticks (midpoints)
+  const ySubTicks: number[] = [];
+  for (let i = 0; i < yTicks.length - 1; i++) {
+    ySubTicks.push((yTicks[i] + yTicks[i + 1]) / 2);
+  }
+  const subGridLines = ySubTicks.map((t) => ({
+    y: CHART_PAD.top + ch - ((t - minTime) / (timeRange || 1)) * ch,
+  }));
+
   const xTicks =
     dateRange > 0
       ? [minDate, minDate + dateRange * 0.5, maxDate]
@@ -118,6 +127,32 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
         className="h-28 w-full"
         preserveAspectRatio="xMidYMid meet"
       >
+        {/* Major horizontal grid lines at time markings */}
+        {rightLabels.map(({ y: yy }, i) => (
+          <line
+            key={`major-${i}`}
+            x1={CHART_PAD.left}
+            x2={CHART_VIEW.w - CHART_PAD.right}
+            y1={yy}
+            y2={yy}
+            stroke="rgb(63,63,70)"
+            strokeWidth="0.5"
+          />
+        ))}
+        {/* Sub-dividing horizontal grid lines */}
+        {subGridLines.map(({ y: yy }, i) => (
+          <line
+            key={`sub-${i}`}
+            x1={CHART_PAD.left}
+            x2={CHART_VIEW.w - CHART_PAD.right}
+            y1={yy}
+            y2={yy}
+            stroke="rgb(63,63,70)"
+            strokeWidth="0.5"
+            strokeDasharray="2 3"
+            opacity={0.4}
+          />
+        ))}
         {/* Trend line (smooth, dotted) */}
         {points.length >= 2 && (
           <path
