@@ -71,26 +71,23 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 
-  // Catmull-Rom → cubic bezier smooth curve through all points
-  function catmullRomPath(pts: { x: number; y: number }[], tension = 0.3): string {
+  // Linear regression trend line
+  function linearTrendPath(pts: { x: number; y: number }[]): string {
     if (pts.length < 2) return "";
-    if (pts.length === 2)
-      return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
-    let d = `M ${pts[0].x} ${pts[0].y}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i === 0 ? 0 : i - 1];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
-      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
-      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
-      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
-      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
-      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-    }
-    return d;
+    const n = pts.length;
+    const sumX = pts.reduce((s, p) => s + p.x, 0);
+    const sumY = pts.reduce((s, p) => s + p.y, 0);
+    const sumXY = pts.reduce((s, p) => s + p.x * p.y, 0);
+    const sumX2 = pts.reduce((s, p) => s + p.x * p.x, 0);
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return `M ${pts[0].x} ${pts[0].y} L ${pts[n - 1].x} ${pts[n - 1].y}`;
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+    const x1 = pts[0].x;
+    const x2 = pts[n - 1].x;
+    return `M ${x1} ${slope * x1 + intercept} L ${x2} ${slope * x2 + intercept}`;
   }
-  const trendPath = catmullRomPath(points);
+  const trendPath = linearTrendPath(points);
 
   const fastestPoint = points.find((p) => p.is_fastest);
   const yTicks =
