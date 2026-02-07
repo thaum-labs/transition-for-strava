@@ -28,12 +28,28 @@ type SegmentEffortRow = {
   vam_mh: number | null;
 };
 
+const SERVER_ERROR_MSG =
+  "Could not load—request timed out or the server is busy. Try again in a moment.";
+
+function isHtmlResponse(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith("<!") || t.includes("</html>");
+}
+
+function normalizeErrorResponse(text: string, fallback: string): string {
+  if (!text || text.length > 500) return fallback;
+  if (isHtmlResponse(text)) return SERVER_ERROR_MSG;
+  return text;
+}
+
 function SegmentBlock({
   segmentId,
   initialDetail,
+  loadOrder = 0,
 }: {
   segmentId: string;
   initialDetail: SegmentDetail | null;
+  loadOrder?: number;
 }) {
   const [detail, setDetail] = useState<SegmentDetail | null>(initialDetail);
   const [efforts, setEfforts] = useState<SegmentEffortRow[] | null>(null);
@@ -56,37 +72,64 @@ function SegmentBlock({
         );
         if (cancelled) return;
         if (!segRes.ok) {
-          const msg = await segRes.text().catch(() => "Failed to load segment.");
-          setDetailError(msg || "Failed to load segment.");
+          const raw = await segRes.text().catch(() => "");
+          setDetailError(normalizeErrorResponse(raw, "Failed to load segment."));
           return;
         }
-        const segJson = (await segRes.json()) as SegmentDetail;
-        setDetail(segJson);
+        const raw = await segRes.text();
+        if (cancelled) return;
+        if (isHtmlResponse(raw)) {
+          setDetailError(SERVER_ERROR_MSG);
+          return;
+        }
+        try {
+          const segJson = JSON.parse(raw) as SegmentDetail;
+          setDetail(segJson);
+        } catch {
+          setDetailError("Failed to load segment.");
+        }
       })();
     }
 
     setEfforts(null);
     setEffortsError(null);
-    void (async () => {
-      const base = window.location.origin;
-      const effRes = await fetch(
-        `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`,
-        { cache: "no-store", credentials: "include" },
-      );
-      if (cancelled) return;
-      if (!effRes.ok) {
-        const msg = await effRes.text().catch(() => "Failed to load efforts.");
-        setEffortsError(msg || "Failed to load efforts.");
-        return;
-      }
-      const effJson = (await effRes.json()) as SegmentEffortRow[];
-      setEfforts(effJson);
-    })();
+
+    const delayMs = loadOrder * 600;
+    const t = setTimeout(() => {
+      void (async () => {
+        const base = window.location.origin;
+        const effRes = await fetch(
+          `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`,
+          { cache: "no-store", credentials: "include" },
+        );
+        if (cancelled) return;
+        if (!effRes.ok) {
+          const raw = await effRes.text().catch(() => "");
+          setEffortsError(
+            normalizeErrorResponse(raw, "Failed to load efforts."),
+          );
+          return;
+        }
+        const raw = await effRes.text();
+        if (cancelled) return;
+        if (isHtmlResponse(raw)) {
+          setEffortsError(SERVER_ERROR_MSG);
+          return;
+        }
+        try {
+          const effJson = JSON.parse(raw) as SegmentEffortRow[];
+          setEfforts(effJson);
+        } catch {
+          setEffortsError("Failed to load efforts.");
+        }
+      })();
+    }, delayMs);
 
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
-  }, [segmentId, initialDetail]);
+  }, [segmentId, initialDetail, loadOrder]);
 
   const loading = detail === null && detailError === null;
   const error = detailError ?? effortsError;
@@ -257,10 +300,11 @@ export default function SegmentsPage() {
             ) to see them here with your best 5 attempts.
           </div>
         ) : (
-          starred.map((seg) => (
+          starred.map((seg, i) => (
             <SegmentBlock
               key={seg.id}
               segmentId={seg.id}
+              loadOrder={i}
               initialDetail={{
                 name: seg.name,
                 distance: seg.distance,
