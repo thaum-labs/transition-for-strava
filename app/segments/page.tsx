@@ -26,6 +26,7 @@ type SegmentEffortRow = {
   max_heartrate: number | null;
   speed_kmh: number | null;
   vam_mh: number | null;
+  is_fastest?: boolean;
 };
 
 type EffortsResult =
@@ -123,7 +124,18 @@ function SegmentBlock({
                 {efforts.map((row, i) => (
                   <tr key={i} className="border-b border-zinc-800/80">
                     <td className="py-1.5 pr-2">
-                      {formatElapsed(row.elapsed_time)}
+                      <span className="inline-flex items-center gap-1">
+                        {row.is_fastest && (
+                          <span
+                            className="text-amber-400"
+                            title="Fastest time"
+                            aria-label="Fastest time"
+                          >
+                            ★
+                          </span>
+                        )}
+                        {formatElapsed(row.elapsed_time)}
+                      </span>
                     </td>
                     <td className="py-1.5 pr-2">
                       {row.speed_kmh != null ? `${row.speed_kmh} km/h` : "—"}
@@ -274,7 +286,7 @@ export default function SegmentsPage() {
           >
             Strava → My Segments
           </a>
-          . Star or unstar segments there to change this list. Your best 5 attempts (time, speed, power, VAM, heart rate) are shown below.
+          . Star or unstar segments there to change this list. Your 5 most recent attempts plus your fastest time (★) are shown below.
         </p>
       </header>
 
