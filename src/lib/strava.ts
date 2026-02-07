@@ -103,15 +103,41 @@ export async function ensureFreshSession(
   };
 }
 
+type StravaRequestOptions = {
+  timeoutMs?: number;
+};
+
 export async function stravaGetJson<T>(
   path: string,
   accessToken: string,
+  options: StravaRequestOptions = {},
 ): Promise<{ data: T; rateLimit: RateLimitSnapshot }> {
-  const res = await fetch(`${STRAVA_API_BASE}${path}`, {
-    method: "GET",
-    headers: { authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timeoutId =
+    controller && options.timeoutMs != null
+      ? setTimeout(() => controller.abort(), options.timeoutMs)
+      : null;
+
+  let res: Response;
+  try {
+    res = await fetch(`${STRAVA_API_BASE}${path}`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: controller?.signal,
+    });
+  } catch (err) {
+    if (controller?.signal.aborted) {
+      const timeoutErr = new Error("Strava request timed out") as Error & {
+        status?: number;
+      };
+      timeoutErr.status = 504;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   const rateLimit = parseRateLimitHeaders(res.headers);
 
@@ -142,9 +168,14 @@ function errorStatus(err: unknown): number | null {
 export async function stravaGetJsonWithRefresh<T>(
   path: string,
   session: SessionData,
+  options: StravaRequestOptions = {},
 ): Promise<{ data: T; rateLimit: RateLimitSnapshot; session: SessionData; refreshed: boolean }> {
   try {
-    const { data, rateLimit } = await stravaGetJson<T>(path, session.strava.accessToken);
+    const { data, rateLimit } = await stravaGetJson<T>(
+      path,
+      session.strava.accessToken,
+      options,
+    );
     return { data, rateLimit, session, refreshed: false };
   } catch (err: unknown) {
     if (errorStatus(err) !== 401) throw err;
@@ -161,6 +192,7 @@ export async function stravaGetJsonWithRefresh<T>(
     const { data, rateLimit } = await stravaGetJson<T>(
       path,
       refreshedSession.strava.accessToken,
+      options,
     );
     return { data, rateLimit, session: refreshedSession, refreshed: true };
   }
