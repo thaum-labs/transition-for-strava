@@ -71,6 +71,27 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 
+  // Catmull-Rom → cubic bezier smooth curve through all points
+  function catmullRomPath(pts: { x: number; y: number }[], tension = 0.3): string {
+    if (pts.length < 2) return "";
+    if (pts.length === 2)
+      return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i === 0 ? 0 : i - 1];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+    return d;
+  }
+  const trendPath = catmullRomPath(points);
+
   const fastestPoint = points.find((p) => p.is_fastest);
   const yTicks =
     timeRange > 0
@@ -97,6 +118,18 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
         className="h-28 w-full"
         preserveAspectRatio="xMidYMid meet"
       >
+        {/* Trend line (smooth, dotted) */}
+        {points.length >= 2 && (
+          <path
+            d={trendPath}
+            fill="none"
+            stroke="#f97216"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeDasharray="3 4"
+            opacity={0.4}
+          />
+        )}
         {/* Line */}
         <path
           d={linePath}
