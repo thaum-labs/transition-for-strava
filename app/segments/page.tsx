@@ -223,87 +223,6 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
   );
 }
 
-type LeaderboardRow = {
-  rank: number;
-  athlete_name: string;
-  elapsed_time: number;
-  start_date: string;
-  average_hr: number | null;
-  average_watts: number | null;
-};
-
-function FollowingLeaderboard({ segmentId }: { segmentId: string }) {
-  const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/segments/${encodeURIComponent(segmentId)}/leaderboard`,
-          { cache: "no-store", credentials: "include" },
-        );
-        if (cancelled) return;
-        if (res.status === 402) {
-          setError("Leaderboard requires Strava Summit.");
-          return;
-        }
-        if (!res.ok) {
-          setError("Failed to load leaderboard.");
-          return;
-        }
-        const data = (await res.json()) as LeaderboardRow[];
-        if (!cancelled) setRows(data);
-      } catch {
-        if (!cancelled) setError("Failed to load leaderboard.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [segmentId]);
-
-  if (loading) return <p className="py-2 text-xs text-zinc-500">Loading leaderboard…</p>;
-  if (error) return <p className="py-2 text-xs text-red-400">{error}</p>;
-  if (!rows || rows.length === 0)
-    return <p className="py-2 text-xs text-zinc-500">No results from people you follow.</p>;
-
-  return (
-    <table className="w-full min-w-[280px] text-left text-xs">
-      <thead>
-        <tr className="border-b border-zinc-700 text-zinc-400">
-          <th className="py-1.5 pr-2 font-medium">#</th>
-          <th className="py-1.5 pr-2 font-medium">Name</th>
-          <th className="py-1.5 pr-2 font-medium">Time</th>
-          <th className="py-1.5 pr-2 font-medium">Power</th>
-          <th className="py-1.5 pr-2 font-medium">Heart rate</th>
-        </tr>
-      </thead>
-      <tbody className="text-zinc-200">
-        {rows.map((row, i) => (
-          <tr key={i} className="border-b border-zinc-800/80">
-            <td className="py-1.5 pr-2 text-zinc-400">{row.rank}</td>
-            <td className="py-1.5 pr-2 whitespace-nowrap">{row.athlete_name}</td>
-            <td className="py-1.5 pr-2">{formatElapsed(row.elapsed_time)}</td>
-            <td className="py-1.5 pr-2">
-              {row.average_watts != null ? `${row.average_watts} W` : "—"}
-            </td>
-            <td className="py-1.5 pr-2">
-              {row.average_hr != null ? `${Math.round(row.average_hr)} bpm` : "—"}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 type SegmentDetail = {
   name: string;
   distance: number;
@@ -327,7 +246,6 @@ function SegmentBlock({
 }) {
   const [detail, setDetail] = useState<SegmentDetail | null>(initialDetail);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [showFollowing, setShowFollowing] = useState(false);
 
   useEffect(() => {
     if (initialDetail) return;
@@ -449,20 +367,16 @@ function SegmentBlock({
             <p className="text-xs text-zinc-500">No attempts on this segment.</p>
           )}
 
-          {/* Following leaderboard toggle */}
+          {/* Link to view leaderboard on Strava */}
           <div className="mt-3">
-            <button
-              onClick={() => setShowFollowing((v) => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium text-[#f97216] hover:underline"
+            <a
+              href={`https://www.strava.com/segments/${segmentId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-[#f97216] hover:underline"
             >
-              <span>{showFollowing ? "▾" : "▸"}</span>
-              Following leaderboard
-            </button>
-            {showFollowing && (
-              <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2">
-                <FollowingLeaderboard segmentId={segmentId} />
-              </div>
-            )}
+              View leaderboard on Strava →
+            </a>
           </div>
         </div>
       )}
