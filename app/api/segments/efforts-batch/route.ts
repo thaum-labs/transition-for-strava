@@ -185,8 +185,11 @@ export async function POST(req: Request) {
 
   const byId: EffortsBatchResult = {};
   for (const r of results) {
-    if ("efforts" in r) byId[r.id] = { efforts: r.efforts };
-    else byId[r.id] = { error: r.error };
+    if ("efforts" in r && r.efforts !== undefined) {
+      byId[r.id] = { efforts: r.efforts };
+    } else {
+      byId[r.id] = { error: "error" in r ? r.error : "Unknown error" };
+    }
   }
 
   return NextResponse.json(byId, {
