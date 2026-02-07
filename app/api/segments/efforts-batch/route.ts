@@ -42,36 +42,57 @@ export type SegmentEffortRow = {
   max_heartrate: number | null;
   speed_kmh: number | null;
   vam_mh: number | null;
+  is_fastest?: boolean;
 };
 
+function effortToRow(e: StravaSegmentEffort): SegmentEffortRow {
+  const movingTimeHours = e.moving_time / 3600;
+  const speedKmh = movingTimeHours > 0 ? e.distance / 1000 / movingTimeHours : null;
+  const seg = e.segment;
+  const elevHigh = seg?.elevation_high;
+  const elevLow = seg?.elevation_low;
+  const elevGain =
+    elevHigh != null && elevLow != null ? elevHigh - elevLow : null;
+  const elapsedHours = e.elapsed_time / 3600;
+  const vam = elevGain != null && elapsedHours > 0 ? elevGain / elapsedHours : null;
+  return {
+    elapsed_time: e.elapsed_time,
+    moving_time: e.moving_time,
+    distance: e.distance,
+    start_date: e.start_date,
+    average_watts: e.average_watts ?? null,
+    average_heartrate: e.average_heartrate ?? null,
+    max_heartrate: e.max_heartrate ?? null,
+    speed_kmh: speedKmh != null ? Math.round(speedKmh * 10) / 10 : null,
+    vam_mh: vam != null ? Math.round(vam) : null,
+  };
+}
+
+/** 5 most recent efforts + the single fastest (if not already in those 5). Fastest row gets is_fastest. */
 function transformEfforts(efforts: StravaSegmentEffort[]): SegmentEffortRow[] {
-  const byTime = [...efforts].sort((a, b) => a.elapsed_time - b.elapsed_time);
-  const best5 = byTime.slice(0, 5);
-  const byDateDesc = [...best5].sort(
+  if (efforts.length === 0) return [];
+  const rows = efforts.map(effortToRow);
+  const byDateDesc = [...rows].sort(
     (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
   );
-  return byDateDesc.map((e) => {
-    const movingTimeHours = e.moving_time / 3600;
-    const speedKmh = movingTimeHours > 0 ? e.distance / 1000 / movingTimeHours : null;
-    const seg = e.segment;
-    const elevHigh = seg?.elevation_high;
-    const elevLow = seg?.elevation_low;
-    const elevGain =
-      elevHigh != null && elevLow != null ? elevHigh - elevLow : null;
-    const elapsedHours = e.elapsed_time / 3600;
-    const vam = elevGain != null && elapsedHours > 0 ? elevGain / elapsedHours : null;
-    return {
-      elapsed_time: e.elapsed_time,
-      moving_time: e.moving_time,
-      distance: e.distance,
-      start_date: e.start_date,
-      average_watts: e.average_watts ?? null,
-      average_heartrate: e.average_heartrate ?? null,
-      max_heartrate: e.max_heartrate ?? null,
-      speed_kmh: speedKmh != null ? Math.round(speedKmh * 10) / 10 : null,
-      vam_mh: vam != null ? Math.round(vam) : null,
-    };
-  });
+  const recent5 = byDateDesc.slice(0, 5);
+  const fastest = rows.reduce((best, r) =>
+    r.elapsed_time < best.elapsed_time ? r : best,
+  );
+  const key = (r: SegmentEffortRow) => `${r.start_date}-${r.elapsed_time}`;
+  const recentSet = new Set(recent5.map(key));
+  const combined =
+    recentSet.has(key(fastest))
+      ? recent5
+      : [...recent5, fastest].sort(
+          (a, b) =>
+            new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
+        );
+  const minTime = Math.min(...combined.map((r) => r.elapsed_time));
+  return combined.map((r) => ({
+    ...r,
+    is_fastest: r.elapsed_time === minTime,
+  }));
 }
 
 type SegmentResult =
@@ -83,11 +104,13 @@ function getStatus(e: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
+const SEGMENT_EFFORTS_PAGE_SIZE = 30;
+
 async function fetchEffortsForSegment(
   segmentId: string,
   session: SessionData,
 ): Promise<SegmentResult> {
-  const perPages = [5, 1] as const;
+  const perPages = [SEGMENT_EFFORTS_PAGE_SIZE, 1] as const;
   for (const perPage of perPages) {
     try {
       const qs = new URLSearchParams({
@@ -313,7 +336,8 @@ export async function POST(req: Request) {
     );
     for (const segmentId of segmentIds) {
       const effort = fromActivities.get(segmentId);
-      if (effort) byId[segmentId] = { efforts: [effort] };
+      if (effort)
+        byId[segmentId] = { efforts: [{ ...effort, is_fastest: true }] };
     }
   }
 
