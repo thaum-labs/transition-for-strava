@@ -9,12 +9,19 @@ function formatElapsed(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-type SegmentDetail = {
-  name: string;
-  distance: number;
-  total_elevation_gain?: number;
-  average_grade?: number;
-};
+function formatChartDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/** Date for table: respects user's locale (browser/OS preferences). */
+function formatEffortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 type SegmentEffortRow = {
   elapsed_time: number;
@@ -27,6 +34,135 @@ type SegmentEffortRow = {
   speed_kmh: number | null;
   vam_mh: number | null;
   is_fastest?: boolean;
+};
+
+const CHART_PAD = { left: 8, right: 40, top: 8, bottom: 22 };
+const CHART_VIEW = { w: 280, h: 120 };
+
+function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
+  if (efforts.length === 0) return null;
+  const sorted = [...efforts].sort(
+    (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime(),
+  );
+  const dates = sorted.map((r) => new Date(r.start_date).getTime());
+  const times = sorted.map((r) => r.elapsed_time);
+  const minDate = Math.min(...dates);
+  const maxDate = Math.max(...dates);
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const dateRange = maxDate - minDate || 86400000;
+  const timeRange = maxTime - minTime || 60;
+
+  const cw = CHART_VIEW.w - CHART_PAD.left - CHART_PAD.right;
+  const ch = CHART_VIEW.h - CHART_PAD.top - CHART_PAD.bottom;
+
+  const x = (t: number) =>
+    CHART_PAD.left + ((t - minDate) / dateRange) * cw;
+  const y = (elapsed: number) =>
+    CHART_PAD.top + ch - ((elapsed - minTime) / timeRange) * ch;
+
+  const points = sorted.map((r) => ({
+    x: x(new Date(r.start_date).getTime()),
+    y: y(r.elapsed_time),
+    ...r,
+  }));
+
+  const linePath = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+
+  const fastestPoint = points.find((p) => p.is_fastest);
+  const yTicks =
+    timeRange > 0
+      ? [minTime, minTime + timeRange * 0.5, maxTime]
+      : [minTime - 30, minTime, minTime + 30];
+  const rightLabels = yTicks.map((t) => ({
+    t,
+    y: CHART_PAD.top + ch - ((t - minTime) / (timeRange || 1)) * ch,
+  }));
+
+  const xTicks =
+    dateRange > 0
+      ? [minDate, minDate + dateRange * 0.5, maxDate]
+      : [minDate - 86400000, minDate, minDate + 86400000];
+  const bottomLabels = xTicks.map((d) => ({
+    label: formatChartDate(new Date(d).toISOString()),
+    x: CHART_PAD.left + ((d - minDate) / (dateRange || 1)) * cw,
+  }));
+
+  return (
+    <figure className="my-2 w-full" aria-label="Effort timeline">
+      <svg
+        viewBox={`0 0 ${CHART_VIEW.w} ${CHART_VIEW.h}`}
+        className="h-28 w-full max-w-md"
+        preserveAspectRatio="xMinYMid meet"
+      >
+        {/* Line */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke="rgb(251,191,36)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Points */}
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={p.is_fastest ? 5 : 3.5}
+            fill={p.is_fastest ? "rgb(251,191,36)" : "rgb(39,39,42)"}
+            stroke="rgb(251,191,36)"
+            strokeWidth={p.is_fastest ? 2 : 1}
+          />
+        ))}
+        {/* Star on fastest (point is already highlighted with larger circle; ★ above) */}
+        {fastestPoint && (
+          <text
+            x={fastestPoint.x}
+            y={fastestPoint.y - 8}
+            textAnchor="middle"
+            style={{ fill: "rgb(251,191,36)", fontSize: 10 }}
+          >
+            ★
+          </text>
+        )}
+        {/* Y labels (time, right) */}
+        {rightLabels.map(({ t, y: yy }, i) => (
+          <text
+            key={i}
+            x={CHART_VIEW.w - 4}
+            y={yy + 3}
+            textAnchor="end"
+            className="fill-zinc-500 text-[9px]"
+          >
+            {formatElapsed(t)}
+          </text>
+        ))}
+        {/* X labels (dates, bottom) */}
+        {bottomLabels.map(({ label, x: xx }, i) => (
+          <text
+            key={i}
+            x={xx}
+            y={CHART_VIEW.h - 4}
+            textAnchor="middle"
+            className="fill-zinc-500 text-[9px]"
+          >
+            {label}
+          </text>
+        ))}
+      </svg>
+    </figure>
+  );
+}
+
+type SegmentDetail = {
+  name: string;
+  distance: number;
+  total_elevation_gain?: number;
+  average_grade?: number;
 };
 
 type EffortsResult =
@@ -110,51 +246,58 @@ function SegmentBlock({
           ) : effortsError ? (
             <p className="text-xs text-red-400">{effortsError}</p>
           ) : efforts && efforts.length > 0 ? (
-            <table className="w-full min-w-[320px] text-left text-xs">
-              <thead>
-                <tr className="border-b border-zinc-700 text-zinc-400">
-                  <th className="py-1.5 pr-2 font-medium">Time</th>
-                  <th className="py-1.5 pr-2 font-medium">Speed</th>
-                  <th className="py-1.5 pr-2 font-medium">Power</th>
-                  <th className="py-1.5 pr-2 font-medium">VAM</th>
-                  <th className="py-1.5 pr-2 font-medium">Heart rate</th>
-                </tr>
-              </thead>
-              <tbody className="text-zinc-200">
-                {efforts.map((row, i) => (
-                  <tr key={i} className="border-b border-zinc-800/80">
-                    <td className="py-1.5 pr-2">
-                      <span className="inline-flex items-center gap-1">
-                        {row.is_fastest && (
-                          <span
-                            className="text-amber-400"
-                            title="Fastest time"
-                            aria-label="Fastest time"
-                          >
-                            ★
-                          </span>
-                        )}
-                        {formatElapsed(row.elapsed_time)}
-                      </span>
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {row.speed_kmh != null ? `${row.speed_kmh} km/h` : "—"}
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {row.average_watts != null ? `${row.average_watts} W` : "—"}
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {row.vam_mh != null ? `${row.vam_mh} m/h` : "—"}
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {row.average_heartrate != null
-                        ? `${row.average_heartrate} bpm`
-                        : "—"}
-                    </td>
+            <>
+              <SegmentChart efforts={efforts} />
+              <table className="w-full min-w-[320px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-700 text-zinc-400">
+                    <th className="py-1.5 pr-2 font-medium">Date</th>
+                    <th className="py-1.5 pr-2 font-medium">Time</th>
+                    <th className="py-1.5 pr-2 font-medium">Speed</th>
+                    <th className="py-1.5 pr-2 font-medium">Power</th>
+                    <th className="py-1.5 pr-2 font-medium">VAM</th>
+                    <th className="py-1.5 pr-2 font-medium">Heart rate</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="text-zinc-200">
+                  {efforts.map((row, i) => (
+                    <tr key={i} className="border-b border-zinc-800/80">
+                      <td className="py-1.5 pr-2 whitespace-nowrap">
+                        {formatEffortDate(row.start_date)}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <span className="inline-flex items-center gap-1">
+                          {row.is_fastest && (
+                            <span
+                              className="text-amber-400"
+                              title="Fastest time"
+                              aria-label="Fastest time"
+                            >
+                              ★
+                            </span>
+                          )}
+                          {formatElapsed(row.elapsed_time)}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {row.speed_kmh != null ? `${row.speed_kmh} km/h` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {row.average_watts != null ? `${row.average_watts} W` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {row.vam_mh != null ? `${row.vam_mh} m/h` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {row.average_heartrate != null
+                          ? `${row.average_heartrate} bpm`
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           ) : (
             <p className="text-xs text-zinc-500">No attempts on this segment.</p>
           )}
