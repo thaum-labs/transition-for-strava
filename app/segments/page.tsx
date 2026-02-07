@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -28,143 +28,55 @@ type SegmentEffortRow = {
   vam_mh: number | null;
 };
 
-const SERVER_ERROR_MSG =
-  "Could not load—request timed out or the server is busy. Try again in a moment.";
-
-function isHtmlResponse(text: string): boolean {
-  const t = text.trim();
-  return t.startsWith("<!") || t.includes("</html>");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeErrorResponse(text: string, fallback: string): string {
-  if (!text || text.length > 500) return fallback;
-  if (isHtmlResponse(text)) return SERVER_ERROR_MSG;
-  return text;
-}
+type EffortsResult =
+  | { efforts: SegmentEffortRow[] }
+  | { error: string }
+  | null;
 
 function SegmentBlock({
   segmentId,
   initialDetail,
-  mayLoadEfforts,
-  onEffortsDone,
+  effortsResult,
 }: {
   segmentId: string;
   initialDetail: SegmentDetail | null;
-  mayLoadEfforts: boolean;
-  onEffortsDone: () => void;
+  effortsResult: EffortsResult;
 }) {
   const [detail, setDetail] = useState<SegmentDetail | null>(initialDetail);
-  const [efforts, setEfforts] = useState<SegmentEffortRow[] | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [effortsError, setEffortsError] = useState<string | null>(null);
-  const effortsDoneRef = useRef(false);
-  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    cancelledRef.current = false;
-    if (initialDetail) {
-      setDetail(initialDetail);
-      setDetailError(null);
-    } else {
-      setDetail(null);
-      setDetailError(null);
-      void (async () => {
-        const base = window.location.origin;
-        const segRes = await fetch(
-          `${base}/api/segments/${encodeURIComponent(segmentId)}`,
-          { cache: "no-store", credentials: "include" },
-        );
-        if (cancelledRef.current) return;
-        if (!segRes.ok) {
-          const raw = await segRes.text().catch(() => "");
-          setDetailError(normalizeErrorResponse(raw, "Failed to load segment."));
-          return;
-        }
-        const raw = await segRes.text();
-        if (cancelledRef.current) return;
-        if (isHtmlResponse(raw)) {
-          setDetailError(SERVER_ERROR_MSG);
-          return;
-        }
-        try {
-          const segJson = JSON.parse(raw) as SegmentDetail;
-          setDetail(segJson);
-        } catch {
-          setDetailError("Failed to load segment.");
-        }
-      })();
-    }
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, [segmentId, initialDetail]);
-
-  useEffect(() => {
-    if (!mayLoadEfforts || !detail) return;
-    effortsDoneRef.current = false;
-    setEfforts(null);
-    setEffortsError(null);
-
-    cancelledRef.current = false;
+    if (initialDetail) return;
+    let cancelled = false;
+    setDetailError(null);
     void (async () => {
+      const base = window.location.origin;
+      const segRes = await fetch(
+        `${base}/api/segments/${encodeURIComponent(segmentId)}`,
+        { cache: "no-store", credentials: "include" },
+      );
+      if (cancelled) return;
+      if (!segRes.ok) {
+        setDetailError("Failed to load segment.");
+        return;
+      }
       try {
-        const base = window.location.origin;
-        const effortUrl = `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`;
-        const retryDelays = [1000, 2000, 4000];
-        let effRes: Response | null = null;
-        for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
-          effRes = await fetch(effortUrl, {
-            cache: "no-store",
-            credentials: "include",
-          });
-          if (cancelledRef.current) return;
-          if (effRes.status !== 504) break;
-          if (attempt < retryDelays.length) {
-            await sleep(retryDelays[attempt]);
-            if (cancelledRef.current) return;
-          }
-        }
-        if (!effRes) return;
-        if (cancelledRef.current) return;
-        if (!effRes.ok) {
-          const raw = await effRes.text().catch(() => "");
-          setEffortsError(
-            normalizeErrorResponse(raw, "Failed to load efforts."),
-          );
-          return;
-        }
-        const raw = await effRes.text();
-        if (cancelledRef.current) return;
-        if (isHtmlResponse(raw)) {
-          setEffortsError(SERVER_ERROR_MSG);
-          return;
-        }
-        try {
-          const effJson = JSON.parse(raw) as SegmentEffortRow[];
-          setEfforts(effJson);
-        } catch {
-          setEffortsError("Failed to load efforts.");
-        }
+        const segJson = (await segRes.json()) as SegmentDetail;
+        if (!cancelled) setDetail(segJson);
       } catch {
-        setEffortsError("Failed to load efforts.");
-      } finally {
-        if (!effortsDoneRef.current) {
-          effortsDoneRef.current = true;
-          onEffortsDone();
-        }
+        if (!cancelled) setDetailError("Failed to load segment.");
       }
     })();
-
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
-  }, [segmentId, detail, mayLoadEfforts, onEffortsDone]);
+  }, [initialDetail, segmentId]);
 
   const loading = detail === null && detailError === null;
+  const efforts =
+    effortsResult && "efforts" in effortsResult ? effortsResult.efforts : null;
+  const effortsError =
+    effortsResult && "error" in effortsResult ? effortsResult.error : null;
   const error = detailError ?? effortsError;
 
   return (
@@ -192,7 +104,7 @@ function SegmentBlock({
 
       {detail && !detailError && (
         <div className="mt-3 overflow-x-auto">
-          {efforts === null && !effortsError ? (
+          {effortsResult === null ? (
             <p className="text-xs text-zinc-500">Loading efforts…</p>
           ) : effortsError ? (
             <p className="text-xs text-red-400">{effortsError}</p>
@@ -248,14 +160,18 @@ type StarredSegment = {
   average_grade?: number;
 };
 
+type EffortsBatchResult = Record<
+  string,
+  { efforts: SegmentEffortRow[] } | { error: string }
+>;
+
 export default function SegmentsPage() {
   const [starred, setStarred] = useState<StarredSegment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [allowedEffortIndex, setAllowedEffortIndex] = useState(0);
-
-  const onEffortsDone = useCallback(() => {
-    setAllowedEffortIndex((prev) => prev + 1);
-  }, []);
+  const [effortsBatch, setEffortsBatch] = useState<EffortsBatchResult | null>(
+    null,
+  );
+  const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,12 +194,60 @@ export default function SegmentsPage() {
       }
       const data = (await res.json()) as StarredSegment[];
       setStarred(data);
-      setAllowedEffortIndex(0);
+      setEffortsBatch(null);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!starred || starred.length === 0) {
+      setBatchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBatchLoading(true);
+    setEffortsBatch(null);
+    void (async () => {
+      try {
+        const res = await fetch("/api/segments/efforts-batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            segmentIds: starred.map((s) => s.id),
+          }),
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (cancelled) return;
+        if (!res.ok) {
+          const fallback: EffortsBatchResult = {};
+          starred.forEach((s) => {
+            fallback[s.id] = { error: "Failed to load efforts." };
+          });
+          setEffortsBatch(fallback);
+          setBatchLoading(false);
+          return;
+        }
+        const data = (await res.json()) as EffortsBatchResult;
+        if (!cancelled) {
+          setEffortsBatch(data);
+        }
+      } catch {
+        const fallback: EffortsBatchResult = {};
+        starred.forEach((s) => {
+          fallback[s.id] = { error: "Failed to load efforts." };
+        });
+        if (!cancelled) setEffortsBatch(fallback);
+      } finally {
+        if (!cancelled) setBatchLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [starred]);
 
   return (
     <main className="space-y-5">
@@ -339,18 +303,19 @@ export default function SegmentsPage() {
             ) to see them here with your best 5 attempts.
           </div>
         ) : (
-          starred.map((seg, i) => (
+          starred.map((seg) => (
             <SegmentBlock
               key={seg.id}
               segmentId={seg.id}
-              mayLoadEfforts={i === allowedEffortIndex}
-              onEffortsDone={onEffortsDone}
               initialDetail={{
                 name: seg.name,
                 distance: seg.distance,
                 total_elevation_gain: seg.total_elevation_gain,
                 average_grade: seg.average_grade,
               }}
+              effortsResult={
+                batchLoading ? null : effortsBatch?.[seg.id] ?? null
+              }
             />
           ))
         )}
