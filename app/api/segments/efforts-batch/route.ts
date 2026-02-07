@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 
 const MAX_SEGMENTS = 25;
 const STRAVA_TIMEOUT_MS = 8_000;
+const SUMMIT_REQUIRED_MSG =
+  "Segment efforts require a Strava Summit subscription.";
 
 type StravaSegmentSummary = {
   elevation_high?: number;
@@ -75,38 +77,50 @@ type SegmentResult =
   | { efforts: SegmentEffortRow[]; session: SessionData; refreshed: boolean }
   | { error: string };
 
+function getStatus(e: unknown): number | undefined {
+  const status = (e as { status?: number })?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
 async function fetchEffortsForSegment(
   segmentId: string,
   session: SessionData,
 ): Promise<SegmentResult> {
-  try {
-    const qs = new URLSearchParams({
-      segment_id: segmentId,
-      per_page: "5",
-    });
-    const { data: efforts, session: updatedSession, refreshed } =
-      await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
-        `/segment_efforts?${qs.toString()}`,
-        session,
-        { timeoutMs: STRAVA_TIMEOUT_MS },
-      );
-    return {
-      efforts: transformEfforts(efforts),
-      session: updatedSession,
-      refreshed,
-    };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    const status =
-      typeof (e as { status?: number })?.status === "number"
-        ? (e as { status: number }).status
-        : 502;
-    if (status === 504) return { error: "Timed out. Try again." };
-    if (status === 429) return { error: "Rate limit." };
-    if (status === 401 || status === 403 || status === 404)
-      return { error: "Not available." };
-    return { error: msg };
+  const perPages = [5, 1] as const;
+  for (const perPage of perPages) {
+    try {
+      const qs = new URLSearchParams({
+        segment_id: segmentId,
+        per_page: String(perPage),
+      });
+      const { data: efforts, session: updatedSession, refreshed } =
+        await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
+          `/segment_efforts?${qs.toString()}`,
+          session,
+          { timeoutMs: STRAVA_TIMEOUT_MS },
+        );
+      return {
+        efforts: transformEfforts(efforts),
+        session: updatedSession,
+        refreshed,
+      };
+    } catch (e: unknown) {
+      const status = getStatus(e);
+      if (status === 402) {
+        if (perPage === 1) {
+          return { error: SUMMIT_REQUIRED_MSG };
+        }
+        continue;
+      }
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      if (status === 504) return { error: "Timed out. Try again." };
+      if (status === 429) return { error: "Rate limit." };
+      if (status === 401 || status === 403 || status === 404)
+        return { error: "Not available." };
+      return { error: msg };
+    }
   }
+  return { error: SUMMIT_REQUIRED_MSG };
 }
 
 export type EffortsBatchResult = Record<
