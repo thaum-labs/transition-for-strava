@@ -77,9 +77,10 @@ export async function GET(
 
   try {
     // Use the /segment_efforts endpoint with segment_id query param
+    // Keep per_page small to avoid Strava API timeouts (we only need best 5)
     const qs = new URLSearchParams({
       segment_id: segmentId,
-      per_page: "30",
+      per_page: "5",
     });
     const { data: efforts, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
