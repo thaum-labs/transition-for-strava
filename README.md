@@ -46,8 +46,30 @@ Transition for Strava is a **mobile-first web app** that helps you export your S
 - **Mobile**: Uses Web Share API for direct sharing to other apps
 - **Desktop**: Standard file download
 
+## 🧪 Local development & testing
+
+You can run the app locally to test changes (including Segments) before deploying:
+
+1. **Clone and install**
+   - Clone the repo and run `npm install` in the project root.
+
+2. **Environment**
+   - Copy `.env.example` to `.env.local`.
+   - Set `APP_BASE_URL=http://localhost:3000` and `STRAVA_REDIRECT_URI=http://localhost:3000/api/auth/strava/callback`.
+   - Add your Strava app credentials (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`) and a `SESSION_SECRET` (e.g. `openssl rand -base64 32`).
+   - In the [Strava API app settings](https://www.strava.com/settings/api), add `http://localhost:3000/api/auth/strava/callback` as an Authorization Callback Domain.
+
+3. **Run**
+   - `npm run dev` then open [http://localhost:3000](http://localhost:3000).
+   - Log in with Strava, go to **Activities** → **Segments** (or `/segments`).
+
+4. **Testing Segments (free vs Summit)**
+   - **Free account:** You may see “Segment efforts require a Strava Summit subscription.” If the API allows one effort for free, you’ll see a single effort per segment.
+   - **Summit account:** You should see up to 5 efforts per starred segment. If you have both account types, test with each to confirm behavior before pushing to production.
+
 ## ⚠️ Notes & Limitations
 
+- **Segment efforts (Segments page)** – Listing your best efforts per segment uses Strava’s segment efforts API. That access may require a **Strava Summit** subscription; free accounts may get limited or no data (402 Payment Required). The app shows a clear message when Summit is required.
 - **Not all activities can be exported** - Indoor/manual activities or privacy-restricted activities may not include GPS tracks
 - **Mobile downloads vary by browser**:
   - iOS: Often requires opening from Safari downloads/Files before sharing
