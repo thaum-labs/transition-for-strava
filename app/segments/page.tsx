@@ -58,9 +58,10 @@ function SegmentBlock({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [effortsError, setEffortsError] = useState<string | null>(null);
   const effortsDoneRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
     if (initialDetail) {
       setDetail(initialDetail);
       setDetailError(null);
@@ -73,14 +74,14 @@ function SegmentBlock({
           `${base}/api/segments/${encodeURIComponent(segmentId)}`,
           { cache: "no-store", credentials: "include" },
         );
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         if (!segRes.ok) {
           const raw = await segRes.text().catch(() => "");
           setDetailError(normalizeErrorResponse(raw, "Failed to load segment."));
           return;
         }
         const raw = await segRes.text();
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         if (isHtmlResponse(raw)) {
           setDetailError(SERVER_ERROR_MSG);
           return;
@@ -93,6 +94,9 @@ function SegmentBlock({
         }
       })();
     }
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [segmentId, initialDetail]);
 
   useEffect(() => {
@@ -101,7 +105,7 @@ function SegmentBlock({
     setEfforts(null);
     setEffortsError(null);
 
-    let cancelled = false;
+    cancelledRef.current = false;
     void (async () => {
       try {
         const base = window.location.origin;
@@ -109,7 +113,7 @@ function SegmentBlock({
           `${base}/api/segments/${encodeURIComponent(segmentId)}/efforts`,
           { cache: "no-store", credentials: "include" },
         );
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         if (!effRes.ok) {
           const raw = await effRes.text().catch(() => "");
           setEffortsError(
@@ -118,7 +122,7 @@ function SegmentBlock({
           return;
         }
         const raw = await effRes.text();
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         if (isHtmlResponse(raw)) {
           setEffortsError(SERVER_ERROR_MSG);
           return;
@@ -140,7 +144,7 @@ function SegmentBlock({
     });
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, [segmentId, detail, mayLoadEfforts, onEffortsDone]);
 
