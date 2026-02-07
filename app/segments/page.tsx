@@ -95,7 +95,7 @@ function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
       <svg
         viewBox={`0 0 ${CHART_VIEW.w} ${CHART_VIEW.h}`}
         className="h-28 w-full"
-        preserveAspectRatio="xMinYMid slice"
+        preserveAspectRatio="none"
       >
         {/* Line */}
         <path
