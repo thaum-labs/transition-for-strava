@@ -141,7 +141,7 @@ function SegmentBlock({
           onEffortsDone();
         }
       }
-    });
+    })();
 
     return () => {
       cancelledRef.current = true;
