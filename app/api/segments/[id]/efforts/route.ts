@@ -90,10 +90,14 @@ export async function GET(
       );
     if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
+    // Limit to efforts within the last 12 months
+    const cutoffMs = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const recent = efforts.filter((e) => new Date(e.start_date).getTime() >= cutoffMs);
+
     // Best 10 by elapsed_time, then sort those by date descending
-    const byTime = [...efforts].sort((a, b) => a.elapsed_time - b.elapsed_time);
-    const best5 = byTime.slice(0, 10);
-    const byDateDesc = [...best5].sort(
+    const byTime = [...recent].sort((a, b) => a.elapsed_time - b.elapsed_time);
+    const best10 = byTime.slice(0, 10);
+    const byDateDesc = [...best10].sort(
       (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
     );
 

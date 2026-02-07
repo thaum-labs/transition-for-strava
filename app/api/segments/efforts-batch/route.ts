@@ -106,6 +106,14 @@ function getStatus(e: unknown): number | undefined {
 
 const SEGMENT_EFFORTS_PAGE_SIZE = 30;
 
+/** Efforts within the last 12 months only. */
+const EFFORTS_CUTOFF_MS = 365 * 24 * 60 * 60 * 1000;
+
+function filterLast12Months(efforts: StravaSegmentEffort[]): StravaSegmentEffort[] {
+  const cutoff = Date.now() - EFFORTS_CUTOFF_MS;
+  return efforts.filter((e) => new Date(e.start_date).getTime() >= cutoff);
+}
+
 async function fetchEffortsForSegment(
   segmentId: string,
   session: SessionData,
@@ -123,8 +131,9 @@ async function fetchEffortsForSegment(
           session,
           { timeoutMs: STRAVA_TIMEOUT_MS },
         );
+      const recent = filterLast12Months(efforts);
       return {
-        efforts: transformEfforts(efforts),
+        efforts: transformEfforts(recent),
         session: updatedSession,
         refreshed,
       };
@@ -221,14 +230,16 @@ async function fetchEffortsFromActivities(
       ),
     );
 
+    const cutoffMs = Date.now() - EFFORTS_CUTOFF_MS;
     for (const activity of details) {
       const efforts = activity?.segment_efforts;
       if (!Array.isArray(efforts)) continue;
       for (const e of efforts) {
         const segId = e.segment?.id != null ? String(e.segment.id) : null;
         if (!segId || !segmentIdSet.has(segId)) continue;
-        const existing = out.get(segId);
         const row = activityEffortToRow(e);
+        if (new Date(row.start_date).getTime() < cutoffMs) continue;
+        const existing = out.get(segId);
         if (
           !existing ||
           new Date(row.start_date).getTime() > new Date(existing.start_date).getTime()
