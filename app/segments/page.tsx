@@ -281,6 +281,15 @@ function SegmentBlock({
     effortsResult && "error" in effortsResult ? effortsResult.error : null;
   const error = detailError ?? effortsError;
 
+  const timeImprovedBy =
+    efforts && efforts.length >= 2
+      ? (() => {
+          const minT = Math.min(...efforts.map((r) => r.elapsed_time));
+          const maxT = Math.max(...efforts.map((r) => r.elapsed_time));
+          return maxT - minT;
+        })()
+      : null;
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
       <div className="min-w-0 flex-1">
@@ -300,6 +309,11 @@ function SegmentBlock({
               {detail.average_grade != null &&
                 ` · ${detail.average_grade.toFixed(1)}% avg gradient`}
             </p>
+            {timeImprovedBy != null && (
+              <p className="mt-1 text-xs font-medium text-[#f97216]">
+                Time improved by {formatElapsed(timeImprovedBy)}
+              </p>
+            )}
           </>
         ) : null}
       </div>
