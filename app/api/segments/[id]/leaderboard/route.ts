@@ -5,26 +5,6 @@ import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
 
 export const runtime = "nodejs";
 
-type StravaSegmentSummary = {
-  elevation_high?: number;
-  elevation_low?: number;
-  average_grade?: number;
-  [key: string]: unknown;
-};
-
-type StravaSegmentEffort = {
-  id: number;
-  elapsed_time: number;
-  moving_time: number;
-  distance: number;
-  start_date: string;
-  average_watts?: number;
-  average_heartrate?: number;
-  max_heartrate?: number;
-  segment?: StravaSegmentSummary;
-  [key: string]: unknown;
-};
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -36,13 +16,42 @@ function parseSegmentId(raw: string): string | null {
   return match ? match[1]! : null;
 }
 
+type StravaLeaderboardEntry = {
+  athlete_name: string;
+  elapsed_time: number;
+  moving_time: number;
+  start_date: string;
+  start_date_local: string;
+  rank: number;
+  average_hr?: number;
+  average_watts?: number;
+  distance?: number;
+  [key: string]: unknown;
+};
+
+type StravaLeaderboardResponse = {
+  effort_count: number;
+  entry_count: number;
+  entries: StravaLeaderboardEntry[];
+  [key: string]: unknown;
+};
+
+export type LeaderboardRow = {
+  rank: number;
+  athlete_name: string;
+  elapsed_time: number;
+  start_date: string;
+  average_hr: number | null;
+  average_watts: number | null;
+};
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   const rl = checkRateLimit({
-    key: `segments-efforts:${ip}`,
+    key: `segments-leaderboard:${ip}`,
     limit: 60,
     windowMs: 60_000,
   });
@@ -59,7 +68,7 @@ export async function GET(
   const { id: rawId } = await context.params;
   const segmentId = parseSegmentId(rawId);
   if (!segmentId) {
-    return new NextResponse("Invalid segment ID or URL.", {
+    return new NextResponse("Invalid segment ID.", {
       status: 400,
       headers: { "cache-control": "no-store" },
     });
@@ -76,52 +85,25 @@ export async function GET(
   const { session: fresh, refreshed } = await ensureFreshSession(session);
 
   try {
-    // Use the /segment_efforts endpoint with segment_id query param
-    // Keep per_page small to avoid Strava API timeouts (we only need best 10)
-    const qs = new URLSearchParams({
-      segment_id: segmentId,
-      per_page: "10",
-    });
-    const { data: efforts, session: updatedSession, refreshed: tokenRefreshed } =
-      await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
-        `/segment_efforts?${qs.toString()}`,
+    const qs = new URLSearchParams({ following: "true" });
+    const { data, session: updatedSession, refreshed: tokenRefreshed } =
+      await stravaGetJsonWithRefresh<StravaLeaderboardResponse>(
+        `/segments/${segmentId}/leaderboard?${qs.toString()}`,
         fresh,
         { timeoutMs: 10_000 },
       );
     if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
-    // Best 10 by elapsed_time, then sort those by date descending
-    const byTime = [...efforts].sort((a, b) => a.elapsed_time - b.elapsed_time);
-    const best5 = byTime.slice(0, 10);
-    const byDateDesc = [...best5].sort(
-      (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
-    );
+    const rows: LeaderboardRow[] = (data.entries ?? []).map((e) => ({
+      rank: e.rank,
+      athlete_name: e.athlete_name,
+      elapsed_time: e.elapsed_time,
+      start_date: e.start_date ?? e.start_date_local ?? "",
+      average_hr: e.average_hr ?? null,
+      average_watts: e.average_watts ?? null,
+    }));
 
-    const out = byDateDesc.map((e) => {
-      const movingTimeHours = e.moving_time / 3600;
-      const speedKmh = movingTimeHours > 0 ? e.distance / 1000 / movingTimeHours : null;
-      const seg = e.segment;
-      const elevHigh = seg?.elevation_high;
-      const elevLow = seg?.elevation_low;
-      const elevGain =
-        elevHigh != null && elevLow != null ? elevHigh - elevLow : null;
-      const elapsedHours = e.elapsed_time / 3600;
-      const vam = elevGain != null && elapsedHours > 0 ? elevGain / elapsedHours : null;
-
-      return {
-        elapsed_time: e.elapsed_time,
-        moving_time: e.moving_time,
-        distance: e.distance,
-        start_date: e.start_date,
-        average_watts: e.average_watts ?? null,
-        average_heartrate: e.average_heartrate ?? null,
-        max_heartrate: e.max_heartrate ?? null,
-        speed_kmh: speedKmh != null ? Math.round(speedKmh * 10) / 10 : null,
-        vam_mh: vam != null ? Math.round(vam) : null,
-      };
-    });
-
-    return NextResponse.json(out, {
+    return NextResponse.json(rows, {
       headers: { "cache-control": "no-store" },
     });
   } catch (e: unknown) {
@@ -134,9 +116,15 @@ export async function GET(
         headers: { "cache-control": "no-store" },
       });
     }
+    if (status === 402) {
+      return new NextResponse("Leaderboard requires Strava Summit.", {
+        status: 402,
+        headers: { "cache-control": "no-store" },
+      });
+    }
     if (status === 403 || status === 404) {
       return new NextResponse("Segment not found or access denied.", {
-        status: status,
+        status,
         headers: { "cache-control": "no-store" },
       });
     }
@@ -152,7 +140,7 @@ export async function GET(
         headers: { "cache-control": "no-store" },
       });
     }
-    return new NextResponse(`Failed to load segment efforts: ${msg}`, {
+    return new NextResponse(`Failed to load leaderboard: ${msg}`, {
       status: 502,
       headers: { "cache-control": "no-store" },
     });

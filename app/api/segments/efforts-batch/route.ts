@@ -68,23 +68,23 @@ function effortToRow(e: StravaSegmentEffort): SegmentEffortRow {
   };
 }
 
-/** 5 most recent efforts + the single fastest (if not already in those 5). Fastest row gets is_fastest. */
+/** 10 most recent efforts + the single fastest (if not already in those 10). Fastest row gets is_fastest. */
 function transformEfforts(efforts: StravaSegmentEffort[]): SegmentEffortRow[] {
   if (efforts.length === 0) return [];
   const rows = efforts.map(effortToRow);
   const byDateDesc = [...rows].sort(
     (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
   );
-  const recent5 = byDateDesc.slice(0, 5);
+  const recent10 = byDateDesc.slice(0, 10);
   const fastest = rows.reduce((best, r) =>
     r.elapsed_time < best.elapsed_time ? r : best,
   );
   const key = (r: SegmentEffortRow) => `${r.start_date}-${r.elapsed_time}`;
-  const recentSet = new Set(recent5.map(key));
+  const recentSet = new Set(recent10.map(key));
   const combined =
     recentSet.has(key(fastest))
-      ? recent5
-      : [...recent5, fastest].sort(
+      ? recent10
+      : [...recent10, fastest].sort(
           (a, b) =>
             new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
         );
