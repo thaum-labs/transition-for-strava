@@ -22,6 +22,11 @@ export default function HomePage() {
             Export your Strava activities as GPX or FIT files in one tap — then share
             or import them into other apps and devices.
           </p>
+          <p className="text-sm text-zinc-400">
+            In Segments, view your starred segments with up to 10 efforts from the last
+            12 months, see how much you’ve improved, compare any two times, and open
+            the leaderboard on Strava. (Strava Summit required for segment efforts.)
+          </p>
         </div>
       </header>
 
