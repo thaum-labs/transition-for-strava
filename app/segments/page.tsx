@@ -246,6 +246,7 @@ function SegmentBlock({
 }) {
   const [detail, setDetail] = useState<SegmentDetail | null>(initialDetail);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [compareIndices, setCompareIndices] = useState<number[]>([]);
 
   useEffect(() => {
     if (initialDetail) return;
@@ -281,7 +282,7 @@ function SegmentBlock({
     effortsResult && "error" in effortsResult ? effortsResult.error : null;
   const error = detailError ?? effortsError;
 
-  const timeImprovedBy =
+  const defaultTimeImprovedBy =
     efforts && efforts.length >= 2
       ? (() => {
           const minT = Math.min(...efforts.map((r) => r.elapsed_time));
@@ -289,6 +290,22 @@ function SegmentBlock({
           return maxT - minT;
         })()
       : null;
+
+  const comparingTwo = efforts && compareIndices.length === 2;
+  const [idxA, idxB] = compareIndices;
+  const compareDiff =
+    comparingTwo && efforts
+      ? Math.abs(efforts[idxA]!.elapsed_time - efforts[idxB]!.elapsed_time)
+      : null;
+  const timeImprovedBy = compareDiff ?? defaultTimeImprovedBy;
+
+  const toggleCompare = (i: number) => {
+    setCompareIndices((prev) => {
+      if (prev.includes(i)) return prev.filter((x) => x !== i);
+      if (prev.length >= 2) return [prev[1]!, i];
+      return [...prev, i];
+    });
+  };
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
@@ -311,7 +328,15 @@ function SegmentBlock({
             </p>
             {timeImprovedBy != null && (
               <p className="mt-1 text-xs font-medium text-[#f97216]">
-                Time improved by {formatElapsed(timeImprovedBy)}
+                {comparingTwo && efforts && idxA !== undefined && idxB !== undefined ? (
+                  <>
+                    Comparing {formatEffortDate(efforts[idxA]!.start_date)} and{" "}
+                    {formatEffortDate(efforts[idxB]!.start_date)}. Time improved by{" "}
+                    {formatElapsed(timeImprovedBy)}
+                  </>
+                ) : (
+                  <>Time improved by {formatElapsed(timeImprovedBy)}</>
+                )}
               </p>
             )}
           </>
@@ -330,6 +355,9 @@ function SegmentBlock({
               <table className="w-full min-w-[320px] text-left text-xs">
               <thead>
                 <tr className="border-b border-zinc-700 text-zinc-400">
+                  <th className="w-8 py-1.5 pr-1 font-medium" title="Select two to compare">
+                    Compare
+                  </th>
                   <th className="py-1.5 pr-2 font-medium">Date</th>
                   <th className="py-1.5 pr-2 font-medium">Time</th>
                   <th className="py-1.5 pr-2 font-medium">Speed</th>
@@ -341,6 +369,17 @@ function SegmentBlock({
               <tbody className="text-zinc-200">
                 {efforts.map((row, i) => (
                   <tr key={i} className="border-b border-zinc-800/80">
+                    <td className="py-1.5 pr-1">
+                      <label className="flex cursor-pointer items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={compareIndices.includes(i)}
+                          onChange={() => toggleCompare(i)}
+                          className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 text-[#f97216] focus:ring-[#f97216]"
+                          aria-label={`Compare ${formatEffortDate(row.start_date)}`}
+                        />
+                      </label>
+                    </td>
                     <td className="py-1.5 pr-2 whitespace-nowrap">
                       {formatEffortDate(row.start_date)}
                     </td>
