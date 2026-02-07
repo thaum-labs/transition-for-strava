@@ -86,6 +86,7 @@ export async function GET(
       await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
         `/segment_efforts?${qs.toString()}`,
         fresh,
+        { timeoutMs: 10_000 },
       );
     if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
@@ -142,6 +143,12 @@ export async function GET(
     if (status === 429) {
       return new NextResponse("Strava rate limit reached. Try again later.", {
         status: 429,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    if (status === 504) {
+      return new NextResponse("Strava timed out. Try again in a moment.", {
+        status: 504,
         headers: { "cache-control": "no-store" },
       });
     }
