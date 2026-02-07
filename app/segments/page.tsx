@@ -36,7 +36,7 @@ type SegmentEffortRow = {
   is_fastest?: boolean;
 };
 
-const CHART_PAD = { left: 8, right: 40, top: 8, bottom: 22 };
+const CHART_PAD = { left: 4, right: 22, top: 6, bottom: 20 };
 const CHART_VIEW = { w: 280, h: 120 };
 
 function SegmentChart({ efforts }: { efforts: SegmentEffortRow[] }) {
