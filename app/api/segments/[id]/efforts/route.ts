@@ -5,8 +5,6 @@ import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
 
 export const runtime = "nodejs";
 
-type StravaAthlete = { id: number; [key: string]: unknown };
-
 type StravaSegmentSummary = {
   elevation_high?: number;
   elevation_low?: number;
@@ -78,29 +76,19 @@ export async function GET(
   const { session: fresh, refreshed } = await ensureFreshSession(session);
 
   try {
-    const { session: sessionAfterAthlete, refreshed: athleteRefreshed } =
-      await ensureFreshSession(fresh);
-    const athleteSession = sessionAfterAthlete;
-
-    const { data: athlete, session: sessionWithAthlete, refreshed: tokenRefreshed1 } =
-      await stravaGetJsonWithRefresh<StravaAthlete>("/athlete", athleteSession);
-    let currentSession = sessionWithAthlete;
-    if (refreshed || athleteRefreshed || tokenRefreshed1) await setSession(currentSession);
-
-    const athleteId = athlete.id;
-
+    // Use the /segment_efforts endpoint with segment_id query param
     const qs = new URLSearchParams({
-      athlete_id: String(athleteId),
-      per_page: "200",
+      segment_id: segmentId,
+      per_page: "30",
     });
-    const { data: efforts, session: sessionAfterEfforts, refreshed: tokenRefreshed2 } =
+    const { data: efforts, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
-        `/segments/${segmentId}/all_efforts?${qs.toString()}`,
-        currentSession,
+        `/segment_efforts?${qs.toString()}`,
+        fresh,
       );
-    currentSession = sessionAfterEfforts;
-    if (tokenRefreshed2) await setSession(currentSession);
+    if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
+    // Best 5 by elapsed_time, then sort those by date descending
     const byTime = [...efforts].sort((a, b) => a.elapsed_time - b.elapsed_time);
     const best5 = byTime.slice(0, 5);
     const byDateDesc = [...best5].sort(
@@ -137,6 +125,7 @@ export async function GET(
   } catch (e: unknown) {
     const status =
       isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
+    const msg = e instanceof Error ? e.message : "Unknown error";
     if (status === 401) {
       return new NextResponse("Unauthorized.", {
         status: 401,
@@ -155,7 +144,7 @@ export async function GET(
         headers: { "cache-control": "no-store" },
       });
     }
-    return new NextResponse("Failed to load segment efforts.", {
+    return new NextResponse(`Failed to load segment efforts: ${msg}`, {
       status: 502,
       headers: { "cache-control": "no-store" },
     });
