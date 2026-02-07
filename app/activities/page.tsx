@@ -1,14 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActivityCard, type ActivitySummary } from "@/src/components/ActivityCard";
 import { ExportSheet } from "@/src/components/ExportSheet";
 
-type DateRange = "7d" | "30d" | "90d";
+type DateRange = "7d" | "30d" | "today";
 
 function daysAgoToUnixSeconds(days: number) {
   return Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+}
+
+function startOfTodayUnixSeconds(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return Math.floor(d.getTime() / 1000);
 }
 
 export default function ActivitiesPage() {
@@ -55,7 +62,7 @@ export default function ActivitiesPage() {
           ? daysAgoToUnixSeconds(7)
           : range === "30d"
             ? daysAgoToUnixSeconds(30)
-            : daysAgoToUnixSeconds(90);
+            : startOfTodayUnixSeconds();
 
       const url = new URL("/api/activities", window.location.origin);
       url.searchParams.set("per_page", "30");
@@ -120,13 +127,16 @@ export default function ActivitiesPage() {
         </div>
         <p className="text-xs text-zinc-400">
           Pick a time range, filter or search, then tap <strong>Export</strong> on
-          an activity to download GPX or FIT.
+          an activity to download GPX or FIT.{" "}
+          <Link href="/segments" className="text-amber-400 hover:underline">
+            Track segments
+          </Link>
         </p>
       </header>
 
       <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
         <div className="flex gap-2">
-          {(["7d", "30d", "90d"] as const).map((r) => (
+          {(["7d", "30d", "today"] as const).map((r) => (
             <button
               key={r}
               type="button"
@@ -138,7 +148,7 @@ export default function ActivitiesPage() {
                   : "border border-zinc-800 text-zinc-200",
               ].join(" ")}
             >
-              {r.toUpperCase()}
+              {r === "today" ? "Today" : r.toUpperCase()}
             </button>
           ))}
         </div>
