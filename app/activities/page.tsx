@@ -22,7 +22,7 @@ export default function ActivitiesPage() {
     useState<ActivitySummary | null>(null);
   const [lastFormat, setLastFormat] = useState<"gpx" | "fit" | null>(null);
 
-  const [range, setRange] = useState<DateRange>("30d");
+  const [range, setRange] = useState<DateRange>("7d");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
 
