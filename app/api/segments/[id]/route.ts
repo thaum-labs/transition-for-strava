@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSession, setSession } from "@/src/lib/session";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -15,10 +16,6 @@ type StravaSegment = {
   elevation_low?: number;
   [key: string]: unknown;
 };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
 
 function parseSegmentId(raw: string): string | null {
   const trimmed = raw.trim();
@@ -65,9 +62,8 @@ export async function GET(
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const { data, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaSegment>(
         `/segments/${segmentId}`,
@@ -81,18 +77,20 @@ export async function GET(
         ? data.elevation_high - data.elevation_low
         : undefined);
 
-    return NextResponse.json({
-      name: data.name,
-      distance: data.distance,
-      total_elevation_gain: elevGain,
-      average_grade: data.average_grade,
-    }, {
-      headers: { "cache-control": "no-store" },
-    });
+    return NextResponse.json(
+      {
+        name: data.name,
+        distance: data.distance,
+        total_elevation_gain: elevGain,
+        average_grade: data.average_grade,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
     if (status === 401) {
+      await clearSession();
       return new NextResponse("Unauthorized.", {
         status: 401,
         headers: { "cache-control": "no-store" },
@@ -100,13 +98,19 @@ export async function GET(
     }
     if (status === 403 || status === 404) {
       return new NextResponse("Segment not found or access denied.", {
-        status: status,
+        status,
         headers: { "cache-control": "no-store" },
       });
     }
     if (status === 429) {
       return new NextResponse("Strava rate limit reached. Try again later.", {
         status: 429,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    if (status === 504) {
+      return new NextResponse("Strava timed out. Try again in a moment.", {
+        status: 504,
         headers: { "cache-control": "no-store" },
       });
     }

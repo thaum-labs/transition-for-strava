@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSession, setSession } from "@/src/lib/session";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 import type { SessionData } from "@/src/lib/session";
 
 export const runtime = "nodejs";
@@ -286,13 +287,17 @@ export async function POST(req: Request) {
     });
   }
 
-  const segmentIds: string[] =
+  const segmentIdsRaw: string[] =
+    body != null &&
+    typeof body === "object" &&
     Array.isArray((body as { segmentIds?: unknown }).segmentIds) &&
     (body as { segmentIds: unknown[] }).segmentIds.every((x) => typeof x === "string")
       ? (body as { segmentIds: string[] }).segmentIds
           .map((s) => String(s).trim())
           .filter((s) => /^\d+$/.test(s))
       : [];
+  // Deduplicate while preserving order
+  const segmentIds = [...new Set(segmentIdsRaw)];
   if (segmentIds.length === 0) {
     return new NextResponse("Missing or invalid segmentIds.", {
       status: 400,
@@ -314,45 +319,67 @@ export async function POST(req: Request) {
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-  if (refreshed) await setSession(fresh);
+  try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
+    if (refreshed) await setSession(fresh);
 
-  const results = await Promise.all(
-    segmentIds.map(async (id) => {
-      const out = await fetchEffortsForSegment(id, fresh);
-      if ("efforts" in out) {
-        if (out.refreshed) await setSession(out.session);
-        return { id, efforts: out.efforts } as const;
-      }
-      return { id, error: out.error } as const;
-    }),
-  );
-
-  const byId: EffortsBatchResult = {};
-  let all402 = true;
-  for (const r of results) {
-    if ("efforts" in r && r.efforts !== undefined) {
-      byId[r.id] = { efforts: r.efforts };
-      all402 = false;
-    } else {
-      byId[r.id] = { error: "error" in r ? r.error : "Unknown error" };
-      if ("error" in r && r.error !== SUMMIT_REQUIRED_MSG) all402 = false;
-    }
-  }
-
-  if (all402) {
-    const fromActivities = await fetchEffortsFromActivities(
-      fresh,
-      new Set(segmentIds),
+    const results = await Promise.all(
+      segmentIds.map(async (id) => {
+        const out = await fetchEffortsForSegment(id, fresh);
+        if ("efforts" in out) {
+          if (out.refreshed) await setSession(out.session);
+          return { id, efforts: out.efforts } as const;
+        }
+        return { id, error: out.error } as const;
+      }),
     );
-    for (const segmentId of segmentIds) {
-      const effort = fromActivities.get(segmentId);
-      if (effort)
-        byId[segmentId] = { efforts: [{ ...effort, is_fastest: true }] };
-    }
-  }
 
-  return NextResponse.json(byId, {
-    headers: { "cache-control": "no-store" },
-  });
+    const byId: EffortsBatchResult = {};
+    let all402 = true;
+    for (const r of results) {
+      if ("efforts" in r && r.efforts !== undefined) {
+        byId[r.id] = { efforts: r.efforts };
+        all402 = false;
+      } else {
+        byId[r.id] = { error: "error" in r ? r.error : "Unknown error" };
+        if ("error" in r && r.error !== SUMMIT_REQUIRED_MSG) all402 = false;
+      }
+    }
+
+    if (all402) {
+      const fromActivities = await fetchEffortsFromActivities(
+        fresh,
+        new Set(segmentIds),
+      );
+      for (const segmentId of segmentIds) {
+        const effort = fromActivities.get(segmentId);
+        if (effort)
+          byId[segmentId] = { efforts: [{ ...effort, is_fastest: true }] };
+      }
+    }
+
+    return NextResponse.json(byId, {
+      headers: { "cache-control": "no-store" },
+    });
+  } catch (e: unknown) {
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
+    if (status === 401) {
+      await clearSession();
+      return new NextResponse("Unauthorized.", {
+        status: 401,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    if (status === 429) {
+      return new NextResponse("Strava rate limit reached. Try again later.", {
+        status: 429,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    return new NextResponse("Failed to load segment efforts.", {
+      status: 502,
+      headers: { "cache-control": "no-store" },
+    });
+  }
 }

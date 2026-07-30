@@ -3,8 +3,9 @@ import { z } from "zod";
 import { buildGpx } from "@/src/lib/gpx";
 import { buildFit } from "@/src/lib/fit";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
-import { getSession, readCsrfToken, setSession } from "@/src/lib/session";
+import { clearSession, getSession, readCsrfToken, setSession } from "@/src/lib/session";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -18,9 +19,14 @@ type StravaActivityDetail = {
   id: number;
   name: string;
   start_date: string;
+  elapsed_time?: number;
+  moving_time?: number;
+  utc_offset?: number;
   calories?: number;
   kilojoules?: number;
 };
+
+const MAX_STREAM_POINTS = 100_000;
 
 type StravaStream = { data?: unknown };
 type StravaStreamSet = {
@@ -115,9 +121,8 @@ export async function GET(req: Request) {
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const activityResult = await stravaGetJsonWithRefresh<StravaActivityDetail>(
       `/activities/${parsed.data.activityId}`,
       fresh,
@@ -144,6 +149,13 @@ export async function GET(req: Request) {
     if (!latlng || latlng.length < 2) {
       return new NextResponse("No GPS track available for this activity.", {
         status: 400,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+
+    if (latlng.length > MAX_STREAM_POINTS) {
+      return new NextResponse("Activity track is too large to export.", {
+        status: 413,
         headers: { "cache-control": "no-store" },
       });
     }
@@ -198,7 +210,12 @@ export async function GET(req: Request) {
         power: power ?? undefined,
         velocity: velocity ?? undefined,
       },
-      options: { sportType },
+      options: {
+        sportType,
+        movingTimeSeconds: activity.moving_time,
+        elapsedTimeSeconds: activity.elapsed_time,
+        utcOffsetSeconds: activity.utc_offset,
+      },
       calories,
     });
     const fitBody = Buffer.from(fitBytes);
@@ -211,9 +228,10 @@ export async function GET(req: Request) {
       },
     });
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
     if (status === 401) {
+      await clearSession();
       return new NextResponse("Unauthorized.", {
         status: 401,
         headers: { "cache-control": "no-store" },
@@ -222,6 +240,12 @@ export async function GET(req: Request) {
     if (status === 429) {
       return new NextResponse("Strava rate limit reached. Try again later.", {
         status: 429,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    if (status === 504) {
+      return new NextResponse("Strava timed out. Try again in a moment.", {
+        status: 504,
         headers: { "cache-control": "no-store" },
       });
     }

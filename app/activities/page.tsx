@@ -27,26 +27,38 @@ export default function ActivitiesPage() {
   const [query, setQuery] = useState("");
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    });
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Still navigate home; session cookie may already be gone.
+    }
     router.push("/");
   }
 
   useEffect(() => {
+    const controller = new AbortController();
     void (async () => {
-      const res = await fetch("/api/csrf", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (!res.ok) return;
-      const json = (await res.json()) as { token: string };
-      setCsrfToken(json.token);
+      try {
+        const res = await fetch("/api/csrf", {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { token: string };
+        if (!controller.signal.aborted) setCsrfToken(json.token);
+      } catch {
+        // CSRF fetch failed; export will surface an error if needed.
+      }
     })();
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     void (async () => {
       setError(null);
       setActivities(null);
@@ -59,25 +71,34 @@ export default function ActivitiesPage() {
       url.searchParams.set("page", "1");
       url.searchParams.set("after", String(after));
 
-      const res = await fetch(url.toString(), {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (res.status === 401) {
-        setError("You’re not logged in. Please connect Strava again.");
-        setActivities([]);
-        return;
-      }
-      if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        setError(msg || "Failed to load activities.");
-        setActivities([]);
-        return;
-      }
+      try {
+        const res = await fetch(url.toString(), {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (res.status === 401) {
+          setError("You’re not logged in. Please connect Strava again.");
+          setActivities([]);
+          return;
+        }
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          setError(msg || "Failed to load activities.");
+          setActivities([]);
+          return;
+        }
 
-      const json = (await res.json()) as ActivitySummary[];
-      setActivities(json);
+        const json = (await res.json()) as ActivitySummary[];
+        if (!controller.signal.aborted) setActivities(json);
+      } catch {
+        if (controller.signal.aborted) return;
+        setError("Network error while loading activities. Please try again.");
+        setActivities([]);
+      }
     })();
+    return () => controller.abort();
   }, [range]);
 
   const filtered = useMemo(() => {
@@ -204,4 +225,3 @@ export default function ActivitiesPage() {
     </main>
   );
 }
-

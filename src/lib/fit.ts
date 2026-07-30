@@ -3,6 +3,15 @@ import { Encoder, Profile, Utils } from "@garmin/fitsdk";
 export type FitOptions = {
   sportType?: number; // FIT sport type (0=generic, 1=running, 2=cycling, etc.)
   subSportType?: number; // FIT sub-sport type (0=generic, etc.)
+  /** Moving/timer time in seconds (excludes pauses). Falls back to elapsed. */
+  movingTimeSeconds?: number;
+  /** Elapsed time in seconds (includes pauses). Falls back to stream duration. */
+  elapsedTimeSeconds?: number;
+  /**
+   * Offset from UTC to local activity time in seconds (Strava utc_offset).
+   * Used for ACTIVITY.localTimestamp.
+   */
+  utcOffsetSeconds?: number;
 };
 
 export type FitStreams = {
@@ -86,9 +95,18 @@ export function buildFit(params: {
 
   // Convert start date to FIT timestamp
   const startTimestamp = Utils.convertDateToDateTime(startDateUtc);
-  
-  // Calculate total elapsed time
-  const totalElapsedTime = hasTime ? time[n - 1] : n; // seconds
+
+  // Stream-derived elapsed (last time sample, or n-1 when synthesizing 1Hz timestamps)
+  const streamElapsed = hasTime ? time[n - 1] : Math.max(n - 1, 1);
+  const totalElapsedTime =
+    options.elapsedTimeSeconds != null && options.elapsedTimeSeconds > 0
+      ? options.elapsedTimeSeconds
+      : streamElapsed;
+  // Timer time excludes pauses when moving_time is provided by Strava
+  const totalTimerTime =
+    options.movingTimeSeconds != null && options.movingTimeSeconds > 0
+      ? options.movingTimeSeconds
+      : totalElapsedTime;
 
   // Sport settings
   const sportType = options.sportType ?? 2; // Default to cycling
@@ -138,7 +156,7 @@ export function buildFit(params: {
   for (let i = 0; i < n; i++) {
     const [lat, lon] = latlng[i];
     const timestamp = hasTime ? startTimestamp + time[i] : startTimestamp + i;
-    
+
     // Calculate distance from previous point using Haversine formula
     let segmentDistance = 0;
     if (i > 0) {
@@ -201,8 +219,8 @@ export function buildFit(params: {
     lastTimestamp = timestamp;
   }
 
-  // Calculate average metrics
-  const averageSpeed = totalElapsedTime > 0 ? totalDistance / totalElapsedTime : 0; // m/s
+  // Calculate average metrics (use timer time for moving average when available)
+  const averageSpeed = totalTimerTime > 0 ? totalDistance / totalTimerTime : 0; // m/s
   const averageHeartRate = heartRateCount > 0 ? Math.round(totalHeartRate / heartRateCount) : undefined;
 
   // 5. EVENT - Timer stop
@@ -218,7 +236,7 @@ export function buildFit(params: {
     timestamp: lastTimestamp,
     startTime: startTimestamp,
     totalElapsedTime: totalElapsedTime,
-    totalTimerTime: totalElapsedTime,
+    totalTimerTime: totalTimerTime,
     totalDistance: totalDistance,
     sport: sportName,
     subSport: subSport,
@@ -244,7 +262,7 @@ export function buildFit(params: {
     timestamp: lastTimestamp,
     startTime: startTimestamp,
     totalElapsedTime: totalElapsedTime,
-    totalTimerTime: totalElapsedTime,
+    totalTimerTime: totalTimerTime,
     totalDistance: totalDistance,
     sport: sportName,
     subSport: subSport,
@@ -267,50 +285,19 @@ export function buildFit(params: {
   encoder.onMesg(Profile.MesgNum.SESSION, sessionMessage);
 
   // 8. ACTIVITY - Required (exactly one)
+  // Prefer Strava utc_offset; otherwise leave localTimestamp equal to UTC timestamp
+  // rather than using the server's timezone via Date#getTimezoneOffset.
+  const utcOffset =
+    options.utcOffsetSeconds != null && Number.isFinite(options.utcOffsetSeconds)
+      ? options.utcOffsetSeconds
+      : 0;
   encoder.onMesg(Profile.MesgNum.ACTIVITY, {
     timestamp: lastTimestamp,
     numSessions: 1,
-    totalTimerTime: totalElapsedTime,
-    localTimestamp: lastTimestamp + (startDateUtc.getTimezoneOffset() * -60),
+    totalTimerTime: totalTimerTime,
+    localTimestamp: lastTimestamp + utcOffset,
   });
 
   // Close and return bytes
   return encoder.close();
-}
-
-// Legacy function for backward compatibility - now unused but kept for reference
-export async function gpxToFitBytes(gpx: string, options?: FitOptions): Promise<Uint8Array> {
-  // This function is deprecated - use buildFit directly with streams
-  // Parse GPX and extract data (simplified)
-  const { gpx2fitEncoder } = await import("gpx2fit");
-  
-  type Gpx2FitEncoderResult = {
-    header?: ArrayBuffer;
-    msgBuffers?: ArrayBuffer[];
-    dataArrayBuffer?: ArrayBuffer[];
-    trailer?: ArrayBuffer;
-  };
-
-  const encoder = (await gpx2fitEncoder(gpx)) as unknown as Gpx2FitEncoderResult;
-
-  const parts: ArrayBuffer[] = [];
-  if (encoder.header) parts.push(encoder.header);
-  if (Array.isArray(encoder.msgBuffers)) parts.push(...encoder.msgBuffers);
-  if (Array.isArray(encoder.dataArrayBuffer)) parts.push(...encoder.dataArrayBuffer);
-  if (encoder.trailer) parts.push(encoder.trailer);
-
-  if (parts.length === 0) {
-    throw new Error("FIT generation failed: encoder produced no output.");
-  }
-
-  const total = parts.reduce((sum, b) => sum + b.byteLength, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const b of parts) {
-    out.set(new Uint8Array(b), offset);
-    offset += b.byteLength;
-  }
-
-  console.log(`[FIT] Sport type ${options?.sportType ?? 0} requested (gpx2fit fallback - not applied)`);
-  return out;
 }

@@ -459,30 +459,39 @@ export default function SegmentsPage() {
   const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setError(null);
     void (async () => {
-      const res = await fetch("/api/segments/starred", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (cancelled) return;
-      if (res.status === 401) {
-        setError("You're not logged in. Please connect Strava from the home page.");
+      try {
+        const res = await fetch("/api/segments/starred", {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (res.status === 401) {
+          setError("You're not logged in. Please connect Strava from the home page.");
+          setStarred([]);
+          return;
+        }
+        if (!res.ok) {
+          setError("Failed to load your starred segments.");
+          setStarred([]);
+          return;
+        }
+        const data = (await res.json()) as StarredSegment[];
+        if (!controller.signal.aborted) {
+          setStarred(data);
+          setEffortsBatch(null);
+        }
+      } catch {
+        if (controller.signal.aborted) return;
+        setError("Network error while loading starred segments. Please try again.");
         setStarred([]);
-        return;
       }
-      if (!res.ok) {
-        setError("Failed to load your starred segments.");
-        setStarred([]);
-        return;
-      }
-      const data = (await res.json()) as StarredSegment[];
-      setStarred(data);
-      setEffortsBatch(null);
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -492,6 +501,7 @@ export default function SegmentsPage() {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setBatchLoading(true);
     setEffortsBatch(null);
     void (async () => {
@@ -504,6 +514,7 @@ export default function SegmentsPage() {
           }),
           cache: "no-store",
           credentials: "include",
+          signal: controller.signal,
         });
         if (cancelled) return;
         if (!res.ok) {
@@ -520,17 +531,19 @@ export default function SegmentsPage() {
           setEffortsBatch(data);
         }
       } catch {
+        if (cancelled) return;
         const fallback: EffortsBatchResult = {};
         starred.forEach((s) => {
           fallback[s.id] = { error: "Failed to load efforts." };
         });
-        if (!cancelled) setEffortsBatch(fallback);
+        setEffortsBatch(fallback);
       } finally {
         if (!cancelled) setBatchLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [starred]);
 

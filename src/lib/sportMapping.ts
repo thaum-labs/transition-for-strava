@@ -2,6 +2,16 @@
 export function mapStravaSportToFit(stravaSportType: string): number {
   const normalized = stravaSportType.toLowerCase().replace(/\s+/g, "");
 
+  // E-bike variants must be checked before generic cycling ("bike"/"ride")
+  if (
+    normalized.includes("ebike") ||
+    normalized.includes("e-bike") ||
+    normalized.includes("electricbike") ||
+    normalized === "ebikeride"
+  ) {
+    return 21; // E-Biking
+  }
+
   // Cycling variants
   if (
     normalized.includes("ride") ||
@@ -12,11 +22,6 @@ export function mapStravaSportToFit(stravaSportType: string): number {
     normalized.includes("velomobile")
   ) {
     return 2; // Cycling
-  }
-
-  // E-bike variants
-  if (normalized.includes("ebike") || normalized.includes("e-bike")) {
-    return 21; // E-Biking
   }
 
   // Running variants

@@ -3,6 +3,7 @@ import type { SessionData } from "@/src/lib/session";
 
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
 const STRAVA_OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token";
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export type RateLimitSnapshot = {
   rateLimitLimit?: string;
@@ -37,6 +38,29 @@ function clientSecret() {
   return requiredEnv("STRAVA_CLIENT_SECRET");
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      const timeoutErr = new Error("Strava request timed out") as Error & {
+        status?: number;
+      };
+      timeoutErr.status = 504;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function exchangeAuthorizationCode(code: string): Promise<TokenResponse> {
   const body = new URLSearchParams({
     client_id: clientId(),
@@ -45,21 +69,27 @@ export async function exchangeAuthorizationCode(code: string): Promise<TokenResp
     grant_type: "authorization_code",
   });
 
-  const res = await fetch(STRAVA_OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  const res = await fetchWithTimeout(
+    STRAVA_OAUTH_TOKEN_URL,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+      cache: "no-store",
+    },
+    DEFAULT_TIMEOUT_MS,
+  );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Strava token exchange failed (${res.status}): ${text}`);
+    throw new Error(`Strava token exchange failed (${res.status})`);
   }
   return (await res.json()) as TokenResponse;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+/** In-flight refresh promises keyed by the refresh token being used. */
+const refreshInFlight = new Map<string, Promise<TokenResponse>>();
+
+async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const body = new URLSearchParams({
     client_id: clientId(),
     client_secret: clientSecret(),
@@ -67,18 +97,39 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
     grant_type: "refresh_token",
   });
 
-  const res = await fetch(STRAVA_OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  const res = await fetchWithTimeout(
+    STRAVA_OAUTH_TOKEN_URL,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+      cache: "no-store",
+    },
+    DEFAULT_TIMEOUT_MS,
+  );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Strava refresh failed (${res.status}): ${text}`);
+    const err = new Error(`Strava refresh failed (${res.status})`) as Error & {
+      status?: number;
+    };
+    err.status = res.status === 400 || res.status === 401 ? 401 : res.status;
+    throw err;
   }
   return (await res.json()) as TokenResponse;
+}
+
+/** Serialize refresh by token so concurrent requests share one rotation. */
+export async function refreshAccessTokenSerialized(
+  refreshToken: string,
+): Promise<TokenResponse> {
+  const existing = refreshInFlight.get(refreshToken);
+  if (existing) return existing;
+
+  const promise = refreshAccessToken(refreshToken).finally(() => {
+    refreshInFlight.delete(refreshToken);
+  });
+  refreshInFlight.set(refreshToken, promise);
+  return promise;
 }
 
 export async function ensureFreshSession(
@@ -88,7 +139,7 @@ export async function ensureFreshSession(
   const needsRefresh = session.strava.expiresAt - now <= 60;
   if (!needsRefresh) return { session, refreshed: false };
 
-  const refreshed = await refreshAccessToken(session.strava.refreshToken);
+  const refreshed = await refreshAccessTokenSerialized(session.strava.refreshToken);
   return {
     refreshed: true,
     session: {
@@ -112,38 +163,22 @@ export async function stravaGetJson<T>(
   accessToken: string,
   options: StravaRequestOptions = {},
 ): Promise<{ data: T; rateLimit: RateLimitSnapshot }> {
-  const controller = options.timeoutMs ? new AbortController() : null;
-  const timeoutId =
-    controller && options.timeoutMs != null
-      ? setTimeout(() => controller.abort(), options.timeoutMs)
-      : null;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  let res: Response;
-  try {
-    res = await fetch(`${STRAVA_API_BASE}${path}`, {
+  const res = await fetchWithTimeout(
+    `${STRAVA_API_BASE}${path}`,
+    {
       method: "GET",
       headers: { authorization: `Bearer ${accessToken}` },
       cache: "no-store",
-      signal: controller?.signal,
-    });
-  } catch (err) {
-    if (controller?.signal.aborted) {
-      const timeoutErr = new Error("Strava request timed out") as Error & {
-        status?: number;
-      };
-      timeoutErr.status = 504;
-      throw timeoutErr;
-    }
-    throw err;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
+    },
+    timeoutMs,
+  );
 
   const rateLimit = parseRateLimitHeaders(res.headers);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    const err = new Error(`Strava request failed (${res.status}): ${text}`) as Error & {
+    const err = new Error(`Strava request failed (${res.status})`) as Error & {
       status?: number;
       rateLimit?: RateLimitSnapshot;
     };
@@ -179,22 +214,39 @@ export async function stravaGetJsonWithRefresh<T>(
     return { data, rateLimit, session, refreshed: false };
   } catch (err: unknown) {
     if (errorStatus(err) !== 401) throw err;
-    const refreshed = await refreshAccessToken(session.strava.refreshToken);
-    const refreshedSession: SessionData = {
-      ...session,
-      strava: {
-        ...session.strava,
-        accessToken: refreshed.access_token,
-        refreshToken: refreshed.refresh_token,
-        expiresAt: refreshed.expires_at,
-      },
-    };
-    const { data, rateLimit } = await stravaGetJson<T>(
-      path,
-      refreshedSession.strava.accessToken,
-      options,
-    );
-    return { data, rateLimit, session: refreshedSession, refreshed: true };
+
+    let refreshedSession: SessionData;
+    try {
+      const refreshed = await refreshAccessTokenSerialized(session.strava.refreshToken);
+      refreshedSession = {
+        ...session,
+        strava: {
+          ...session.strava,
+          accessToken: refreshed.access_token,
+          refreshToken: refreshed.refresh_token,
+          expiresAt: refreshed.expires_at,
+        },
+      };
+    } catch {
+      const authErr = new Error("Unauthorized.") as Error & { status?: number };
+      authErr.status = 401;
+      throw authErr;
+    }
+
+    try {
+      const { data, rateLimit } = await stravaGetJson<T>(
+        path,
+        refreshedSession.strava.accessToken,
+        options,
+      );
+      return { data, rateLimit, session: refreshedSession, refreshed: true };
+    } catch (retryErr: unknown) {
+      // Token was rotated; callers must persist the new session even if the resource call failed.
+      if (isRecord(retryErr)) {
+        retryErr.updatedSession = refreshedSession;
+        retryErr.refreshed = true;
+      }
+      throw retryErr;
+    }
   }
 }
-

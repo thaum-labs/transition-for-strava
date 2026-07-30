@@ -5,7 +5,7 @@ import {
   encryptSessionToken,
   SESSION_COOKIE_NAME,
 } from "@/src/lib/session";
-import { isProd } from "@/src/lib/env";
+import { getAppBaseUrl, isProd } from "@/src/lib/env";
 
 export const runtime = "nodejs";
 
@@ -23,18 +23,9 @@ function buildSetCookieHeader(name: string, value: string): string {
   return parts.join("; ");
 }
 
-function publicOrigin(req: Request): string {
-  // Behind proxies (like DigitalOcean App Platform), req.url can be the internal container hostname.
-  // Use forwarded headers to build the real public origin.
-  const xfProto = req.headers.get("x-forwarded-proto");
-  const xfHost = req.headers.get("x-forwarded-host");
-  if (xfProto && xfHost) return `${xfProto}://${xfHost}`;
-  return new URL(req.url).origin;
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const origin = publicOrigin(req);
+  const origin = getAppBaseUrl(req);
   const error = url.searchParams.get("error");
   if (error) {
     return NextResponse.redirect(
@@ -76,16 +67,18 @@ export async function GET(req: Request) {
 
   // Return an HTML page that sets the cookie (via Set-Cookie header) and redirects via JS.
   // This works around Cloudflare/proxies stripping Set-Cookie from 302 redirects.
+  // Serialize the URL with JSON.stringify so it cannot break out of the script string.
+  const redirectJson = JSON.stringify(redirectUrl);
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>Redirecting...</title>
-  <script>window.location.replace("${redirectUrl}");</script>
+  <script>window.location.replace(${redirectJson});</script>
 </head>
 <body>
   <p>Redirecting to your activities...</p>
-  <p><a href="${redirectUrl}">Click here if not redirected automatically.</a></p>
+  <p><a href=${redirectJson}>Click here if not redirected automatically.</a></p>
 </body>
 </html>`;
 
@@ -98,4 +91,3 @@ export async function GET(req: Request) {
     },
   });
 }
-

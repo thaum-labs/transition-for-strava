@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSession, setSession } from "@/src/lib/session";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError, stravaErrorResponse } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -16,9 +17,7 @@ type StravaSegmentSummary = {
   [key: string]: unknown;
 };
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
+const MAX_STARRED_PAGES = 10;
 
 export async function GET(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
@@ -45,15 +44,14 @@ export async function GET(req: Request) {
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const allSegments: StravaSegmentSummary[] = [];
     let page = 1;
     const perPage = 200;
     let currentSession = fresh;
 
-    while (true) {
+    while (page <= MAX_STARRED_PAGES) {
       const qs = new URLSearchParams({
         page: String(page),
         per_page: String(perPage),
@@ -91,23 +89,8 @@ export async function GET(req: Request) {
       headers: { "cache-control": "no-store" },
     });
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
-    if (status === 401) {
-      return new NextResponse("Unauthorized.", {
-        status: 401,
-        headers: { "cache-control": "no-store" },
-      });
-    }
-    if (status === 429) {
-      return new NextResponse("Strava rate limit reached. Try again later.", {
-        status: 429,
-        headers: { "cache-control": "no-store" },
-      });
-    }
-    return new NextResponse("Failed to load starred segments.", {
-      status: 502,
-      headers: { "cache-control": "no-store" },
-    });
+    await persistSessionFromError(e);
+    if (errorStatus(e) === 401) await clearSession();
+    return stravaErrorResponse(e, "Failed to load starred segments.");
   }
 }

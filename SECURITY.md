@@ -15,6 +15,10 @@ Cookies use:
 - `SameSite=Lax`
 - `Secure` in production
 
+## Canonical origin
+- Prefer `APP_BASE_URL` for OAuth redirects (required for predictable production redirects).
+- Forwarded headers are only used as a validated fallback when `APP_BASE_URL` is unset.
+
 ## CSRF
 - OAuth uses `state` and validates it against the `pp_oauth_state` cookie.
 - Export endpoint uses **double-submit CSRF**:

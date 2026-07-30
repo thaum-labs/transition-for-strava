@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSession, setSession } from "@/src/lib/session";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
 
 function parseSegmentId(raw: string): string | null {
   const trimmed = raw.trim();
@@ -82,9 +79,8 @@ export async function GET(
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const qs = new URLSearchParams({ following: "true" });
     const { data, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaLeaderboardResponse>(
@@ -107,10 +103,10 @@ export async function GET(
       headers: { "cache-control": "no-store" },
     });
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
-    const msg = e instanceof Error ? e.message : "Unknown error";
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
     if (status === 401) {
+      await clearSession();
       return new NextResponse("Unauthorized.", {
         status: 401,
         headers: { "cache-control": "no-store" },
@@ -140,7 +136,7 @@ export async function GET(
         headers: { "cache-control": "no-store" },
       });
     }
-    return new NextResponse(`Failed to load leaderboard: ${msg}`, {
+    return new NextResponse("Failed to load leaderboard.", {
       status: 502,
       headers: { "cache-control": "no-store" },
     });

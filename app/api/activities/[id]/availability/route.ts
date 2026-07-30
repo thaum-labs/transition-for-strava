@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSession, setSession } from "@/src/lib/session";
-import { isProd } from "@/src/lib/env";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -37,7 +37,6 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // Next.js 15: route params are provided as a Promise.
   const { id } = await params;
 
   const parsedParams = ParamsSchema.safeParse({ id });
@@ -52,8 +51,20 @@ export async function GET(
   }
 
   const activityId = parsedParams.data.id;
+
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      {
+        gpx: { available: false, reason: "Not authorized. Please log out and reconnect Strava." },
+        fit: { available: false, reason: "Not authorized. Please log out and reconnect Strava." },
+      },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
+
   const rl = checkRateLimit({
-    key: `availability:${activityId}`,
+    key: `availability:${session.strava.accessToken.slice(-12)}:${activityId}`,
     limit: 60,
     windowMs: 60_000,
   });
@@ -67,20 +78,8 @@ export async function GET(
     );
   }
 
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      {
-        gpx: { available: false, reason: "Not authorized. Please log out and reconnect Strava." },
-        fit: { available: false, reason: "Not authorized. Please log out and reconnect Strava." },
-      },
-      { status: 401, headers: { "cache-control": "no-store" } },
-    );
-  }
-
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const { data, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaStreamSet>(
         `/activities/${activityId}/streams?keys=latlng,time,altitude&key_by_type=true`,
@@ -106,9 +105,10 @@ export async function GET(
       { headers: { "cache-control": "no-store" } },
     );
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
     if (status === 401) {
+      await clearSession();
       return NextResponse.json(
         {
           gpx: { available: false, reason: "Not authorized. Please log out and reconnect Strava." },
@@ -118,7 +118,6 @@ export async function GET(
       );
     }
     if (status === 403 || status === 404) {
-      // 403/404 often means insufficient scope or activity not accessible
       return NextResponse.json(
         {
           gpx: { available: false, reason: "Activity streams not accessible. Ensure you approved 'activity:read_all' scope." },
@@ -136,23 +135,13 @@ export async function GET(
         { status: 429, headers: { "cache-control": "no-store" } },
       );
     }
-    // Log the actual error for debugging (but don't expose it to user)
-    const message = isRecord(e) && typeof e.message === "string" ? e.message : "";
-    console.error("Availability check failed:", message || String(e));
-    const debugReason = !isProd() ? ` ${message}`.trim() : "";
+    console.error("Availability check failed:", status);
     return NextResponse.json(
       {
-        gpx: {
-          available: false,
-          reason: `Could not check availability.${debugReason ? ` ${debugReason}` : ""}`.trim(),
-        },
-        fit: {
-          available: false,
-          reason: `Could not check availability.${debugReason ? ` ${debugReason}` : ""}`.trim(),
-        },
+        gpx: { available: false, reason: "Could not check availability." },
+        fit: { available: false, reason: "Could not check availability." },
       },
       { status: 502, headers: { "cache-control": "no-store" } },
     );
   }
 }
-

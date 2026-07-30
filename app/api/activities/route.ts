@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSession, setSession } from "@/src/lib/session";
+import { clearSession, getSession, setSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ const QuerySchema = z.object({
 });
 
 type StravaSummaryActivity = {
-  id: number;
+  id: number | string;
   name: string;
   sport_type: string;
   start_date: string;
@@ -24,10 +25,6 @@ type StravaSummaryActivity = {
   average_speed?: number;
   max_speed?: number;
 };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
 
 export async function GET(req: Request) {
   const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim();
@@ -63,8 +60,6 @@ export async function GET(req: Request) {
     });
   }
 
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
-
   const qs = new URLSearchParams({
     per_page: String(parsed.data.per_page),
     page: String(parsed.data.page),
@@ -73,6 +68,7 @@ export async function GET(req: Request) {
   if (parsed.data.after) qs.set("after", String(parsed.data.after));
 
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const { data, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaSummaryActivity[]>(
         `/athlete/activities?${qs.toString()}`,
@@ -80,8 +76,9 @@ export async function GET(req: Request) {
       );
     if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
+    // Preserve IDs as strings to avoid JS number precision loss on large Strava IDs.
     const minimal = data.map((a) => ({
-      id: a.id,
+      id: String(a.id),
       name: a.name,
       sport_type: a.sport_type,
       start_date: a.start_date,
@@ -96,10 +93,10 @@ export async function GET(req: Request) {
       headers: { "cache-control": "no-store" },
     });
   } catch (e: unknown) {
-    const status =
-      isRecord(e) && typeof e.status === "number" ? (e.status as number) : 502;
+    await persistSessionFromError(e);
+    const status = errorStatus(e) ?? 502;
     if (status === 401) {
-      // Session may be stale/invalid; the UI will prompt re-login.
+      await clearSession();
       return new NextResponse("Unauthorized.", {
         status: 401,
         headers: { "cache-control": "no-store" },
@@ -108,6 +105,12 @@ export async function GET(req: Request) {
     if (status === 429) {
       return new NextResponse("Strava rate limit reached. Try again later.", {
         status: 429,
+        headers: { "cache-control": "no-store" },
+      });
+    }
+    if (status === 504) {
+      return new NextResponse("Strava timed out. Try again in a moment.", {
+        status: 504,
         headers: { "cache-control": "no-store" },
       });
     }

@@ -1,5 +1,5 @@
 export type ActivitySummary = {
-  id: number;
+  id: number | string;
   name: string;
   sport_type: string;
   start_date: string;

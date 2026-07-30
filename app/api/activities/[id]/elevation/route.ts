@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSession, setSession } from "@/src/lib/session";
+import { getSession, setSession, clearSession } from "@/src/lib/session";
 import { checkRateLimit } from "@/src/lib/rateLimiter";
 import { ensureFreshSession, stravaGetJsonWithRefresh } from "@/src/lib/strava";
+import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 
 export const runtime = "nodejs";
 
@@ -41,20 +42,21 @@ function toNumberArray(v: unknown[] | null): number[] | null {
   return out;
 }
 
-// Simplify altitude data to ~50 points for efficient rendering
+// Simplify altitude data to ~50 points for efficient rendering (always keep first & last)
 function simplifyAltitudes(altitudes: number[], targetPoints = 50): number[] {
   if (altitudes.length <= targetPoints) return altitudes;
-  
-  const step = altitudes.length / targetPoints;
+
   const simplified: number[] = [];
-  
-  for (let i = 0; i < targetPoints; i++) {
-    const idx = Math.floor(i * step);
+  const inner = targetPoints - 1;
+  for (let i = 0; i < inner; i++) {
+    const idx = Math.floor((i * (altitudes.length - 1)) / inner);
     simplified.push(altitudes[idx]);
   }
-  
+  simplified.push(altitudes[altitudes.length - 1]);
   return simplified;
 }
+
+const PRIVATE_NO_STORE = { "cache-control": "private, no-store" };
 
 export async function GET(
   _req: Request,
@@ -66,34 +68,35 @@ export async function GET(
   if (!parsedParams.success) {
     return NextResponse.json(
       { altitudes: [] },
-      { status: 400, headers: { "cache-control": "public, max-age=3600" } },
+      { status: 400, headers: PRIVATE_NO_STORE },
     );
   }
 
   const activityId = parsedParams.data.id;
+
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      { altitudes: [] },
+      { status: 401, headers: PRIVATE_NO_STORE },
+    );
+  }
+
+  // Rate limit after auth so unauthenticated callers cannot grow the key space.
   const rl = checkRateLimit({
-    key: `elevation:${activityId}`,
+    key: `elevation:${session.strava.accessToken.slice(-12)}:${activityId}`,
     limit: 60,
     windowMs: 60_000,
   });
   if (!rl.allowed) {
     return NextResponse.json(
       { altitudes: [] },
-      { status: 429, headers: { "cache-control": "public, max-age=60" } },
+      { status: 429, headers: PRIVATE_NO_STORE },
     );
   }
-
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { altitudes: [] },
-      { status: 401, headers: { "cache-control": "no-store" } },
-    );
-  }
-
-  const { session: fresh, refreshed } = await ensureFreshSession(session);
 
   try {
+    const { session: fresh, refreshed } = await ensureFreshSession(session);
     const { data, session: updatedSession, refreshed: tokenRefreshed } =
       await stravaGetJsonWithRefresh<StravaStreamSet>(
         `/activities/${activityId}/streams?keys=altitude&key_by_type=true`,
@@ -102,24 +105,26 @@ export async function GET(
     if (refreshed || tokenRefreshed) await setSession(updatedSession);
 
     const altitudes = toNumberArray(streamArray(data.altitude));
-    
+
     if (!altitudes || altitudes.length < 2) {
-      return NextResponse.json(
-        { altitudes: [] },
-        { headers: { "cache-control": "public, max-age=3600" } },
-      );
+      return NextResponse.json({ altitudes: [] }, { headers: PRIVATE_NO_STORE });
     }
 
     const simplified = simplifyAltitudes(altitudes);
 
     return NextResponse.json(
       { altitudes: simplified },
-      { headers: { "cache-control": "public, max-age=3600" } },
+      { headers: PRIVATE_NO_STORE },
     );
-  } catch {
-    return NextResponse.json(
-      { altitudes: [] },
-      { headers: { "cache-control": "public, max-age=300" } },
-    );
+  } catch (e: unknown) {
+    await persistSessionFromError(e);
+    if (errorStatus(e) === 401) {
+      await clearSession();
+      return NextResponse.json(
+        { altitudes: [] },
+        { status: 401, headers: PRIVATE_NO_STORE },
+      );
+    }
+    return NextResponse.json({ altitudes: [] }, { headers: PRIVATE_NO_STORE });
   }
 }
