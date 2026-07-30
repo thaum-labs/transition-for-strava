@@ -1,4 +1,3 @@
-import Link from "next/link";
 import Image from "next/image";
 
 export default function HomePage() {
@@ -61,12 +60,12 @@ export default function HomePage() {
         </div>
       </div>
 
-      <Link
+      <a
         href="/api/auth/strava/start"
         className="block w-full rounded-xl bg-orange-500 px-4 py-3 text-center font-semibold text-black active:bg-orange-400"
       >
         Continue with Strava
-      </Link>
+      </a>
     </main>
   );
 }

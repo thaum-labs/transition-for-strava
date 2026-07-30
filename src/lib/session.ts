@@ -115,7 +115,14 @@ export async function consumeOAuthState(expected: string): Promise<boolean> {
     httpOnly: true,
     maxAge: 0,
   });
-  return !!got && got === expected;
+  if (!got || !expected) return false;
+  // Constant-time-ish compare for equal-length strings
+  if (got.length !== expected.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < got.length; i++) {
+    mismatch |= got.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export async function issueCsrfToken(): Promise<string> {
