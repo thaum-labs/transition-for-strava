@@ -26,7 +26,7 @@ Cookies use:
 - Forwarded host/proto values are validated before use.
 
 ## CSRF
-- OAuth uses `state` and validates it against the `pp_oauth_state` cookie.
+- OAuth uses a signed `state` JWT verified on callback (no cookie dependency).
 - Export endpoint uses **double-submit CSRF**:
   - Client sends `x-csrf-token`
   - Server compares it to `pp_csrf`
