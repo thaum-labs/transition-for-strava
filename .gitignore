@@ -25,4 +25,5 @@ Thumbs.db
 # misc
 *.log
 .cache/
+*.tsbuildinfo
 
