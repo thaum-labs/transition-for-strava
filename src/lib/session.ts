@@ -4,7 +4,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { isProd, requiredEnv } from "@/src/lib/env";
 
 export const SESSION_COOKIE_NAME = "pp_session";
-const OAUTH_STATE_COOKIE = "pp_oauth_state";
+export const OAUTH_STATE_COOKIE_NAME = "pp_oauth_state";
+const OAUTH_STATE_COOKIE = OAUTH_STATE_COOKIE_NAME;
 const CSRF_COOKIE = "pp_csrf";
 
 export type SessionData = {
@@ -107,22 +108,30 @@ export async function issueOAuthState(): Promise<string> {
   return state;
 }
 
-export async function consumeOAuthState(expected: string): Promise<boolean> {
+export async function peekOAuthState(): Promise<string | null> {
   const store = await cookieStore();
-  const got = store.get(OAUTH_STATE_COOKIE)?.value;
-  store.set(OAUTH_STATE_COOKIE, "", {
-    ...cookieBaseOptions(),
-    httpOnly: true,
-    maxAge: 0,
-  });
+  return store.get(OAUTH_STATE_COOKIE)?.value ?? null;
+}
+
+export function oauthStatesEqual(got: string, expected: string): boolean {
   if (!got || !expected) return false;
-  // Constant-time-ish compare for equal-length strings
   if (got.length !== expected.length) return false;
   let mismatch = 0;
   for (let i = 0; i < got.length; i++) {
     mismatch |= got.charCodeAt(i) ^ expected.charCodeAt(i);
   }
   return mismatch === 0;
+}
+
+export async function consumeOAuthState(expected: string): Promise<boolean> {
+  const got = await peekOAuthState();
+  const store = await cookieStore();
+  store.set(OAUTH_STATE_COOKIE, "", {
+    ...cookieBaseOptions(),
+    httpOnly: true,
+    maxAge: 0,
+  });
+  return oauthStatesEqual(got ?? "", expected);
 }
 
 export async function issueCsrfToken(): Promise<string> {

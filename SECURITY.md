@@ -16,8 +16,9 @@ Cookies use:
 - `Secure` in production
 
 ## Canonical origin
-- Prefer `APP_BASE_URL` for OAuth redirects (required for predictable production redirects).
-- Forwarded headers are only used as a validated fallback when `APP_BASE_URL` is unset.
+- Prefer the **request host** (forwarded headers) for post-login redirects so the browser stays on the host that received the session cookie.
+- `APP_BASE_URL` is still useful as documentation / absolute-link config; do not redirect across hosts after setting cookies.
+- Forwarded host/proto values are validated before use.
 
 ## CSRF
 - OAuth uses `state` and validates it against the `pp_oauth_state` cookie.
