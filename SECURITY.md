@@ -6,9 +6,14 @@ This app is designed to minimize data retention and reduce common web security r
 - Strava access/refresh tokens are stored **only** in an encrypted **httpOnly** cookie (`pp_session`).
 - Tokens are **never** stored in `localStorage` or exposed to client-side JavaScript.
 
+## OAuth state
+- OAuth `state` is a short-lived **signed JWT** (HMAC via `SESSION_SECRET`).
+- Callback verifies the signature/expiry — **no `pp_oauth_state` cookie is required**.
+- This avoids desktop/proxy cases where Set-Cookie is dropped during the Strava redirect hop.
+- A legacy `pp_oauth_state` cookie is cleared on successful login if present.
+
 ## Cookies
 - `pp_session` (httpOnly): encrypted session containing Strava tokens.
-- `pp_oauth_state` (httpOnly): short-lived OAuth state cookie used to validate the callback.
 - `pp_csrf` (non-httpOnly): CSRF double-submit token for export requests.
 
 Cookies use:

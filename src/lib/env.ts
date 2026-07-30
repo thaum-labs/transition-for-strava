@@ -16,6 +16,11 @@ const EnvSchema = z.object({
 
 let cached: z.infer<typeof EnvSchema> | null = null;
 
+/** Test-only: clear cached env so subsequent requiredEnv reads pick up new process.env. */
+export function resetEnvCacheForTests() {
+  cached = null;
+}
+
 function readEnv() {
   if (cached) return cached;
   const parsed = EnvSchema.safeParse({

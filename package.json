@@ -11,7 +11,8 @@
     "build": "next build",
     "start": "node scripts/start.mjs",
     "lint": "next lint",
-    "generate-secret": "node scripts/generate-session-secret.js"
+    "generate-secret": "node scripts/generate-session-secret.js",
+    "test": "tsx --test scripts/test-oauth-state.ts"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.188.0",
@@ -30,6 +31,7 @@
     "eslint-config-next": "^15.5.22",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.3"
   }
 }

@@ -2,12 +2,11 @@ import { NextResponse } from "next/server";
 import { exchangeAuthorizationCode } from "@/src/lib/strava";
 import {
   encryptSessionToken,
-  peekOAuthState,
-  oauthStatesEqual,
   SESSION_COOKIE_NAME,
   OAUTH_STATE_COOKIE_NAME,
   sessionCookieOptions,
 } from "@/src/lib/session";
+import { verifyOAuthState } from "@/src/lib/oauthState";
 import { isProd } from "@/src/lib/env";
 
 export const runtime = "nodejs";
@@ -53,8 +52,7 @@ export async function GET(req: Request) {
     });
   }
 
-  const cookieState = await peekOAuthState();
-  if (!cookieState || !oauthStatesEqual(cookieState, state)) {
+  if (!(await verifyOAuthState(state))) {
     return new NextResponse("Invalid OAuth state.", { status: 400 });
   }
 
@@ -72,8 +70,6 @@ export async function GET(req: Request) {
   const sessionToken = await encryptSessionToken(sessionData);
 
   // Relative redirect keeps the browser on the same host that received Set-Cookie.
-  // Absolute APP_BASE_URL redirects can move www↔apex (or custom↔*.ondigitalocean.app)
-  // and drop the session cookie, causing an immediate "not logged in" on /activities.
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -96,7 +92,7 @@ export async function GET(req: Request) {
   });
 
   res.cookies.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions());
-  // Clear oauth state on the same response (avoid cookies() + manual Set-Cookie conflicts)
+  // Clear any legacy oauth-state cookie from older deployments.
   res.cookies.set(OAUTH_STATE_COOKIE_NAME, "", {
     path: "/",
     httpOnly: true,
