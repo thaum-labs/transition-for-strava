@@ -5,71 +5,111 @@
   
   **Export your Strava activities as GPX or FIT files**
   
-  [🌐 Live Site](https://transitionforstrava.com) • [📖 Documentation](#how-to-use-it) • [🐛 Report Issue](https://github.com/thaum-labs/transition-for-strava/issues)
+  [Live Site](https://transitionforstrava.com) · [How to use](#how-to-use-it) · [Report Issue](https://github.com/thaum-labs/transition-for-strava/issues)
 </div>
 
 ---
 
-## ✨ Overview
+## Overview
 
-Transition for Strava is a **mobile-first web app** that helps you export your Strava activities as GPX or FIT files, making it easy to move your data between apps or back up your activities.
+Transition for Strava is a **mobile-first web app** that helps you export your Strava activities as GPX or FIT files, so you can move data between apps or keep a local backup. It also lets you review starred segments and recent efforts (Strava Summit required for segment efforts).
 
-## 🚀 Quick Start
+Works on **phone and desktop** browsers.
+
+## Quick start
 
 1. Visit [transitionforstrava.com](https://transitionforstrava.com)
-2. Tap **Continue with Strava** to authenticate
-3. Browse your activities (with elevation profiles!) or go to **Segments** to see your starred segments and efforts
+2. Tap **Continue with Strava** to sign in
+3. Browse your activities (with elevation profiles) or open **Segments** for starred segments and efforts
 4. Tap **Export** and choose **GPX** or **FIT**
-5. On mobile: share directly to other apps
-6. On desktop: download the file
+5. On mobile: share directly to other apps  
+   On desktop: download the file
 
-## 🎯 Features
+## Features
 
-- 🔐 **Secure sign-in** - Sign in with your Strava account
-- 📱 **Mobile-first** - Optimized for phones and tablets
-- 🗺️ **GPX Export** - Universal compatibility
-- 🏃 **FIT Export** - Generated for broad compatibility with devices and apps
-- 🏷️ **Auto-detect Sport Type** - Automatically detects cycling, running, etc.
-- 📊 **Rich Metrics** - Includes elevation, speed, heart rate, cadence, and power
-- 🎨 **Elevation Profiles** - Visual elevation charts on activity cards
-- ⭐ **Starred segments** - View your starred segments and track your best efforts over time (requires Strava Summit)
-- 🔒 **Privacy-focused** - No data storage, encrypted sessions only
+- Secure Strava sign-in (official OAuth)
+- Mobile-first layout that also works on desktop
+- GPX export for broad app compatibility
+- FIT export generated for devices and training apps
+- Auto-detected sport type (cycling, running, e-bike, and more)
+- Metrics such as elevation, speed, heart rate, cadence, and power when available
+- Elevation profiles on activity cards
+- Starred segments with recent/fastest efforts (Summit)
+- Privacy-focused: no database, no stored activity files
 
-## 📋 How It Works
+## How to use it
 
-### Export Formats
+### Export formats
 
-- **GPX**: Generated from Strava GPS data. Universal format, works with most apps.
-- **FIT**: Generated from your Strava data for broad compatibility. Includes sport type, speed, elevation gain, heart rate and more.
+- **GPX**: Built from Strava GPS streams. Works with most mapping and training apps.
+- **FIT**: Generated from your Strava data (not a re-upload of the original device file). Includes sport type, timing, elevation, heart rate, and related fields when present.
 
-### Mobile vs Desktop
+### Mobile vs desktop
 
-- **Mobile**: Share directly to other apps
-- **Desktop**: Download the file
+| | Mobile | Desktop |
+|---|---|---|
+| Sign-in | Same Strava OAuth flow | Same Strava OAuth flow |
+| Export | Share sheet when supported | File download |
+| Notes | iOS may require opening the file from Downloads/Files before sharing | Use Chrome/Firefox/Safari/Edge |
 
-## ⚠️ Notes & Limitations
+## Security & privacy
 
-- **Segments** – Viewing your starred segments and effort history requires a **Strava Summit** (premium) subscription.
-- **Not all activities can be exported** - Indoor/manual activities or privacy-restricted activities may not include GPS tracks
-- **Mobile downloads vary by browser**:
-  - iOS: Often requires opening from Safari downloads/Files before sharing
-  - Android: Behavior varies by browser and download settings
-- **FIT files are generated** - They're created from your Strava data, not the original device upload
+- **No password storage** — sign-in goes through Strava OAuth only.
+- **Signed OAuth `state`** — login CSRF protection uses a short-lived signed token in the OAuth URL (no reliance on a fragile cross-site state cookie).
+- **Encrypted session cookie** — Strava access/refresh tokens live only in an httpOnly `pp_session` cookie (not `localStorage`).
+- **No activity file storage** — GPX/FIT files are generated on demand and discarded after the response.
+- **No database in V1** — nothing is retained server-side beyond the session cookie on your device.
 
-## 🔒 Privacy
+See [SECURITY.md](./SECURITY.md) for cookie and CSRF details.
 
-- ✅ **No credential storage** - We don't store your Strava credentials
-- ✅ **No file storage** - Activity files are generated on-demand and never stored
-- ✅ **Encrypted sessions** - Your session is kept secure
-- ✅ **Official Strava sign-in** - We use Strava's sign-in flow
+## Notes & limitations
 
-## 📝 Support
+- **Segments** need a **Strava Summit** subscription for effort history.
+- Indoor, manual, or privacy-restricted activities may have no GPS track and cannot be exported.
+- FIT files are **generated** from Strava streams, not the original device upload.
+- Mobile download/share behavior varies by browser and OS.
 
-If something doesn't work, please [open an issue](https://github.com/thaum-labs/transition-for-strava/issues) with:
-- Device/browser you're using
-- What you clicked/tried to do
-- The error message (if any)
+## Local development
 
-## ⚖️ Disclaimer
+Requirements: Node.js 20.x
 
-This project is not affiliated with Strava.
+```bash
+cp .env.example .env.local
+# Fill in SESSION_SECRET, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET,
+# STRAVA_REDIRECT_URI, and APP_BASE_URL
+npm install
+npm run dev
+```
+
+Generate a session secret:
+
+```bash
+npm run generate-secret
+```
+
+Useful scripts:
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Local Next.js server |
+| `npm run build` / `npm start` | Production build & start |
+| `npm test` | OAuth state unit/integration tests |
+| `npm run lint` | ESLint |
+
+Configure the same callback URL in your [Strava API application](https://www.strava.com/settings/api) as `STRAVA_REDIRECT_URI` (for local use: `http://localhost:3000/api/auth/strava/callback`).
+
+## Support
+
+If something breaks, [open an issue](https://github.com/thaum-labs/transition-for-strava/issues) with:
+
+- Device and browser
+- What you clicked / tried
+- The exact error message (if any)
+
+## Disclaimer
+
+This project is not affiliated with Strava. Strava is a trademark of Strava, Inc.
+
+## License
+
+[MIT](./LICENSE) © Thaum Labs
