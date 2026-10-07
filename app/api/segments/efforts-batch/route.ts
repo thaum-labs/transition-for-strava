@@ -6,12 +6,15 @@ import { errorStatus, persistSessionFromError } from "@/src/lib/httpErrors";
 import type { SessionData } from "@/src/lib/session";
 
 export const runtime = "nodejs";
+/** Allow free-tier activity fallback (many Strava calls) on hosted platforms. */
+export const maxDuration = 60;
 
 const MAX_SEGMENTS = 25;
 const STRAVA_TIMEOUT_MS = 8_000;
 const SUMMIT_REQUIRED_MSG =
   "Segment efforts require a Strava Summit subscription.";
 const FREE_TIER_ACTIVITIES_LIMIT = 15;
+const STRAVA_CONCURRENCY = 5;
 
 type StravaSegmentSummary = {
   elevation_high?: number;
@@ -97,8 +100,8 @@ function transformEfforts(efforts: StravaSegmentEffort[]): SegmentEffortRow[] {
 }
 
 type SegmentResult =
-  | { efforts: SegmentEffortRow[]; session: SessionData; refreshed: boolean }
-  | { error: string };
+  | { efforts: SegmentEffortRow[]; refreshed: boolean }
+  | { error: string; refreshed: boolean };
 
 function getStatus(e: unknown): number | undefined {
   const status = (e as { status?: number })?.status;
@@ -115,9 +118,58 @@ function filterLast12Months(efforts: StravaSegmentEffort[]): StravaSegmentEffort
   return efforts.filter((e) => new Date(e.start_date).getTime() >= cutoff);
 }
 
+function isSummitBlockedError(error: string): boolean {
+  return error === SUMMIT_REQUIRED_MSG || error === "Not available.";
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) break;
+      results[index] = await fn(items[index]!);
+    }
+  }
+  const workers = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return results;
+}
+
+type SessionTracker = {
+  session: SessionData;
+  dirty: boolean;
+  noteRefresh: (session: SessionData, refreshed: boolean) => void;
+};
+
+function createSessionTracker(initial: SessionData, initiallyDirty: boolean): SessionTracker {
+  const state = { session: initial, dirty: initiallyDirty };
+  return {
+    get session() {
+      return state.session;
+    },
+    get dirty() {
+      return state.dirty;
+    },
+    noteRefresh(session: SessionData, refreshed: boolean) {
+      if (refreshed) {
+        state.session = session;
+        state.dirty = true;
+      }
+    },
+  };
+}
+
 async function fetchEffortsForSegment(
   segmentId: string,
-  session: SessionData,
+  tracker: SessionTracker,
 ): Promise<SegmentResult> {
   const perPages = [SEGMENT_EFFORTS_PAGE_SIZE, 1] as const;
   for (const perPage of perPages) {
@@ -129,36 +181,34 @@ async function fetchEffortsForSegment(
       const { data: efforts, session: updatedSession, refreshed } =
         await stravaGetJsonWithRefresh<StravaSegmentEffort[]>(
           `/segment_efforts?${qs.toString()}`,
-          session,
+          tracker.session,
           { timeoutMs: STRAVA_TIMEOUT_MS },
         );
+      tracker.noteRefresh(updatedSession, refreshed);
       const recent = filterLast12Months(efforts);
       return {
         efforts: transformEfforts(recent),
-        session: updatedSession,
         refreshed,
       };
     } catch (e: unknown) {
       const status = getStatus(e);
       if (status === 402) {
         if (perPage === 1) {
-          return { error: SUMMIT_REQUIRED_MSG };
+          return { error: SUMMIT_REQUIRED_MSG, refreshed: false };
         }
         continue;
       }
       const msg = e instanceof Error ? e.message : "Unknown error";
-      if (status === 504) return { error: "Timed out. Try again." };
-      if (status === 429) return { error: "Rate limit." };
+      if (status === 504) return { error: "Timed out. Try again.", refreshed: false };
+      if (status === 429) return { error: "Rate limit.", refreshed: false };
       if (status === 401 || status === 403 || status === 404)
-        return { error: "Not available." };
-      return { error: msg };
+        return { error: "Not available.", refreshed: false };
+      return { error: msg, refreshed: false };
     }
   }
-  return { error: SUMMIT_REQUIRED_MSG };
+  return { error: SUMMIT_REQUIRED_MSG, refreshed: false };
 }
 
-// Free tier: "segment efforts within activities" are available. Fetch recent
-// activities and extract most recent effort per starred segment.
 type ActivitySegmentEffort = {
   elapsed_time: number;
   moving_time: number;
@@ -177,59 +227,32 @@ type DetailedActivity = {
   [key: string]: unknown;
 };
 
-function activityEffortToRow(e: ActivitySegmentEffort): SegmentEffortRow {
-  const movingTimeHours = e.moving_time / 3600;
-  const speedKmh = movingTimeHours > 0 ? e.distance / 1000 / movingTimeHours : null;
-  const seg = e.segment;
-  const elevHigh = seg?.elevation_high;
-  const elevLow = seg?.elevation_low;
-  const elevGain =
-    elevHigh != null && elevLow != null ? elevHigh - elevLow : null;
-  const elapsedHours = e.elapsed_time / 3600;
-  const vam = elevGain != null && elapsedHours > 0 ? elevGain / elapsedHours : null;
-  return {
-    elapsed_time: e.elapsed_time,
-    moving_time: e.moving_time,
-    distance: e.distance,
-    start_date: e.start_date,
-    average_watts: e.average_watts ?? null,
-    average_heartrate: e.average_heartrate ?? null,
-    max_heartrate: e.max_heartrate ?? null,
-    speed_kmh: speedKmh != null ? Math.round(speedKmh * 10) / 10 : null,
-    vam_mh: vam != null ? Math.round(vam) : null,
-  };
-}
-
 async function fetchEffortsFromActivities(
-  session: SessionData,
+  tracker: SessionTracker,
   segmentIdSet: Set<string>,
-): Promise<Map<string, SegmentEffortRow>> {
-  const out = new Map<string, SegmentEffortRow>();
-  let currentSession = session;
+): Promise<Map<string, SegmentEffortRow[]>> {
+  const out = new Map<string, StravaSegmentEffort[]>();
   try {
     const { data: activities, session: s1, refreshed } =
       await stravaGetJsonWithRefresh<{ id: number }[]>(
         `/athlete/activities?per_page=${FREE_TIER_ACTIVITIES_LIMIT}&page=1`,
-        currentSession,
+        tracker.session,
         { timeoutMs: STRAVA_TIMEOUT_MS },
       );
-    currentSession = s1;
-    if (refreshed) await setSession(s1);
-    if (!Array.isArray(activities) || activities.length === 0) return out;
+    tracker.noteRefresh(s1, refreshed);
+    if (!Array.isArray(activities) || activities.length === 0) return new Map();
 
     const ids = activities.slice(0, FREE_TIER_ACTIVITIES_LIMIT).map((a) => a.id);
-    const details = await Promise.all(
-      ids.map((id) =>
-        stravaGetJsonWithRefresh<DetailedActivity>(
+    const details = await mapPool(ids, STRAVA_CONCURRENCY, async (id) => {
+      const { data, session: updatedSession, refreshed: tokenRefreshed } =
+        await stravaGetJsonWithRefresh<DetailedActivity>(
           `/activities/${id}?include_all_efforts=true`,
-          currentSession,
+          tracker.session,
           { timeoutMs: STRAVA_TIMEOUT_MS },
-        ).then((r) => {
-          if (r.refreshed) void setSession(r.session);
-          return r.data;
-        }),
-      ),
-    );
+        );
+      tracker.noteRefresh(updatedSession, tokenRefreshed);
+      return data;
+    });
 
     const cutoffMs = Date.now() - EFFORTS_CUTOFF_MS;
     for (const activity of details) {
@@ -238,21 +261,21 @@ async function fetchEffortsFromActivities(
       for (const e of efforts) {
         const segId = e.segment?.id != null ? String(e.segment.id) : null;
         if (!segId || !segmentIdSet.has(segId)) continue;
-        const row = activityEffortToRow(e);
-        if (new Date(row.start_date).getTime() < cutoffMs) continue;
-        const existing = out.get(segId);
-        if (
-          !existing ||
-          new Date(row.start_date).getTime() > new Date(existing.start_date).getTime()
-        ) {
-          out.set(segId, row);
-        }
+        if (new Date(e.start_date).getTime() < cutoffMs) continue;
+        const list = out.get(segId) ?? [];
+        list.push(e as StravaSegmentEffort);
+        out.set(segId, list);
       }
     }
   } catch {
-    // Return whatever we have; caller will show Summit for missing segments.
+    // Return whatever we collected.
   }
-  return out;
+
+  const rowsBySegment = new Map<string, SegmentEffortRow[]>();
+  for (const [segId, raw] of out) {
+    rowsBySegment.set(segId, transformEfforts(raw));
+  }
+  return rowsBySegment;
 }
 
 export type EffortsBatchResult = Record<
@@ -296,7 +319,6 @@ export async function POST(req: Request) {
           .map((s) => String(s).trim())
           .filter((s) => /^\d+$/.test(s))
       : [];
-  // Deduplicate while preserving order
   const segmentIds = [...new Set(segmentIdsRaw)];
   if (segmentIds.length === 0) {
     return new NextResponse("Missing or invalid segmentIds.", {
@@ -321,42 +343,69 @@ export async function POST(req: Request) {
 
   try {
     const { session: fresh, refreshed } = await ensureFreshSession(session);
-    if (refreshed) await setSession(fresh);
+    const tracker = createSessionTracker(fresh, refreshed);
+    const segmentIdSet = new Set(segmentIds);
 
-    const results = await Promise.all(
-      segmentIds.map(async (id) => {
-        const out = await fetchEffortsForSegment(id, fresh);
-        if ("efforts" in out) {
-          if (out.refreshed) await setSession(out.session);
-          return { id, efforts: out.efforts } as const;
-        }
-        return { id, error: out.error } as const;
-      }),
-    );
+    const probe = await fetchEffortsForSegment(segmentIds[0]!, tracker);
+    const useSummitApi =
+      !("error" in probe) || !isSummitBlockedError(probe.error);
 
     const byId: EffortsBatchResult = {};
-    let all402 = true;
-    for (const r of results) {
-      if ("efforts" in r && r.efforts !== undefined) {
-        byId[r.id] = { efforts: r.efforts };
-        all402 = false;
+
+    if (useSummitApi) {
+      if ("efforts" in probe) {
+        byId[segmentIds[0]!] = { efforts: probe.efforts };
       } else {
-        byId[r.id] = { error: "error" in r ? r.error : "Unknown error" };
-        if ("error" in r && r.error !== SUMMIT_REQUIRED_MSG) all402 = false;
+        byId[segmentIds[0]!] = { error: probe.error };
+      }
+
+      const rest = segmentIds.slice(1);
+      const restResults = await mapPool(rest, STRAVA_CONCURRENCY, async (id) => {
+        const out = await fetchEffortsForSegment(id, tracker);
+        return { id, out };
+      });
+
+      for (const { id, out } of restResults) {
+        if ("efforts" in out) {
+          byId[id] = { efforts: out.efforts };
+        } else {
+          byId[id] = { error: out.error };
+        }
+      }
+    } else {
+      for (const id of segmentIds) {
+        byId[id] = {
+          error:
+            "error" in probe ? probe.error : SUMMIT_REQUIRED_MSG,
+        };
       }
     }
 
-    if (all402) {
-      const fromActivities = await fetchEffortsFromActivities(
-        fresh,
-        new Set(segmentIds),
-      );
+    const needsActivityFallback = segmentIds.some((id) => {
+      const entry = byId[id];
+      if (!entry) return true;
+      if ("efforts" in entry && entry.efforts.length > 0) return false;
+      if ("error" in entry && isSummitBlockedError(entry.error)) return true;
+      return "efforts" in entry && entry.efforts.length === 0;
+    });
+
+    if (needsActivityFallback) {
+      const fromActivities = await fetchEffortsFromActivities(tracker, segmentIdSet);
       for (const segmentId of segmentIds) {
-        const effort = fromActivities.get(segmentId);
-        if (effort)
-          byId[segmentId] = { efforts: [{ ...effort, is_fastest: true }] };
+        const fromApi = byId[segmentId];
+        if (fromApi && "efforts" in fromApi && fromApi.efforts.length > 0) continue;
+        const fromActs = fromActivities.get(segmentId);
+        if (fromActs && fromActs.length > 0) {
+          byId[segmentId] = { efforts: fromActs };
+        } else if (!fromApi || ("error" in fromApi && isSummitBlockedError(fromApi.error))) {
+          byId[segmentId] = {
+            error: "No attempts in your recent activities.",
+          };
+        }
       }
     }
+
+    if (tracker.dirty) await setSession(tracker.session);
 
     return NextResponse.json(byId, {
       headers: { "cache-control": "no-store" },
