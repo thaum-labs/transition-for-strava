@@ -280,7 +280,6 @@ function SegmentBlock({
     effortsResult && "efforts" in effortsResult ? effortsResult.efforts : null;
   const effortsError =
     effortsResult && "error" in effortsResult ? effortsResult.error : null;
-  const error = detailError ?? effortsError;
 
   const defaultTimeImprovedBy =
     efforts && efforts.length >= 2
@@ -312,8 +311,8 @@ function SegmentBlock({
       <div className="min-w-0 flex-1">
         {loading ? (
           <p className="text-sm text-zinc-400">Loading segment…</p>
-        ) : error ? (
-          <p className="text-sm text-red-400">{error}</p>
+        ) : detailError ? (
+          <p className="text-sm text-red-400">{detailError}</p>
         ) : detail ? (
           <>
             <h3 className="truncate text-sm font-semibold text-zinc-100">
@@ -518,9 +517,16 @@ export default function SegmentsPage() {
         });
         if (cancelled) return;
         if (!res.ok) {
+          let message = "Failed to load efforts.";
+          try {
+            const text = (await res.text()).trim();
+            if (text) message = text;
+          } catch {
+            // keep default
+          }
           const fallback: EffortsBatchResult = {};
           starred.forEach((s) => {
-            fallback[s.id] = { error: "Failed to load efforts." };
+            fallback[s.id] = { error: message };
           });
           setEffortsBatch(fallback);
           setBatchLoading(false);
